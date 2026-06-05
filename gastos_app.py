@@ -10,6 +10,103 @@ import hashlib
 # ─────────────────────────────────────────────
 st.set_page_config(page_title="Controle de Gastos", page_icon="💳", layout="wide")
 
+
+# ─────────────────────────────────────────────
+#  PWA — META TAGS + MANIFEST INLINE + SERVICE WORKER
+# ─────────────────────────────────────────────
+st.markdown("""
+<link rel="manifest" href="data:application/json;base64,eyJuYW1lIjoiQ29udHJvbGUgZGUgR2FzdG9zIiwic2hvcnRfbmFtZSI6Ikdhc3RvcyIsInN0YXJ0X3VybCI6Ii8iLCJkaXNwbGF5Ijoic3RhbmRhbG9uZSIsImJhY2tncm91bmRfY29sb3IiOiIjMGYwZjFhIiwidGhlbWVfY29sb3IiOiIjNmEzZGU4IiwiaWNvbnMiOlt7InNyYyI6ImRhdGE6aW1hZ2UvcG5nO2Jhc2U2NCxpVkJPUncwS0dnb0FBQUFOU1VoRVVnQUFBQ0FBQUFBZ0NBWUFBQUQ4R08yekFBQUFBWGxXU0ZsekFBQXNFd0FBTEJNQi91WnF6QUFBQVR4SlJFRlVPTm9yMVYyN2tpUUEvUi9QQUVYZjBjN2ZZZ29VQkxXUXBuY1hSQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQT09Iiwic2l6ZXMiOiIxOTJ4MTkyIiwidHlwZSI6ImltYWdlL3BuZyJ9XX0=">
+
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Gastos">
+<meta name="theme-color" content="#6a3de8">
+<meta name="application-name" content="Controle de Gastos">
+
+<style>
+  /* Remove barra de endereço no standalone */
+  @media all and (display-mode: standalone) {
+    body { margin-top: env(safe-area-inset-top); }
+  }
+</style>
+
+<script>
+  // Registra service worker para funcionar offline e ser instalável
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", function() {
+      const swCode = `
+        const CACHE = "gastos-v1";
+        self.addEventListener("install", e => {
+          self.skipWaiting();
+        });
+        self.addEventListener("activate", e => {
+          e.waitUntil(caches.keys().then(keys =>
+            Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
+          ));
+        });
+        self.addEventListener("fetch", e => {
+          e.respondWith(
+            fetch(e.request).catch(() => caches.match(e.request))
+          );
+        });
+      `;
+      const blob = new Blob([swCode], {type: "application/javascript"});
+      const swUrl = URL.createObjectURL(blob);
+      navigator.serviceWorker.register(swUrl).catch(() => {});
+    });
+  }
+
+  // Banner de instalação Android (evento beforeinstallprompt)
+  let deferredPrompt;
+  window.addEventListener("beforeinstallprompt", (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    const btn = document.getElementById("pwa-install-btn");
+    if (btn) btn.style.display = "flex";
+  });
+
+  function installPWA() {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      deferredPrompt.userChoice.then(() => {
+        deferredPrompt = null;
+        const btn = document.getElementById("pwa-install-btn");
+        if (btn) btn.style.display = "none";
+      });
+    }
+  }
+
+  window.addEventListener("appinstalled", () => {
+    const btn = document.getElementById("pwa-install-btn");
+    if (btn) btn.style.display = "none";
+  });
+</script>
+
+<!-- Botão de instalação Android (aparece só quando disponível) -->
+<div id="pwa-install-btn" style="
+  display: none;
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+  z-index: 9999;
+  background: linear-gradient(135deg, #6a3de8, #9b8dff);
+  color: white; border: none; border-radius: 999px;
+  padding: 14px 28px; cursor: pointer;
+  font-family: Sora, sans-serif; font-size: 15px; font-weight: 600;
+  box-shadow: 0 6px 30px rgba(106,61,232,0.55);
+  align-items: center; gap: 10px; white-space: nowrap;
+  animation: floatin 2s ease-in-out infinite;
+" onclick="installPWA()">
+  💳 Instalar app na tela inicial
+</div>
+
+<style>
+@keyframes floatin {
+  0%, 100% { transform: translateX(-50%) translateY(0); }
+  50%       { transform: translateX(-50%) translateY(-6px); }
+}
+</style>
+""", unsafe_allow_html=True)
+
 # ─────────────────────────────────────────────
 #  CSS GLOBAL
 # ─────────────────────────────────────────────
