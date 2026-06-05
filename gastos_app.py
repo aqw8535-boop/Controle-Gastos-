@@ -12,99 +12,15 @@ st.set_page_config(page_title="Controle de Gastos", page_icon="💳", layout="wi
 
 
 # ─────────────────────────────────────────────
-#  PWA — META TAGS + MANIFEST INLINE + SERVICE WORKER
+#  PWA — META TAGS
 # ─────────────────────────────────────────────
 st.markdown("""
-<link rel="manifest" href="data:application/json;base64,eyJuYW1lIjoiQ29udHJvbGUgZGUgR2FzdG9zIiwic2hvcnRfbmFtZSI6Ikdhc3RvcyIsInN0YXJ0X3VybCI6Ii8iLCJkaXNwbGF5Ijoic3RhbmRhbG9uZSIsImJhY2tncm91bmRfY29sb3IiOiIjMGYwZjFhIiwidGhlbWVfY29sb3IiOiIjNmEzZGU4IiwiaWNvbnMiOlt7InNyYyI6ImRhdGE6aW1hZ2UvcG5nO2Jhc2U2NCxpVkJPUncwS0dnb0FBQUFOU1VoRVVnQUFBQ0FBQUFBZ0NBWUFBQUQ4R08yekFBQUFBWGxXU0ZsekFBQXNFd0FBTEJNQi91WnF6QUFBQVR4SlJFRlVPTm9yMVYyN2tpUUEvUi9QQUVYZjBjN2ZZZ29VQkxXUXBuY1hSQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQT09Iiwic2l6ZXMiOiIxOTJ4MTkyIiwidHlwZSI6ImltYWdlL3BuZyJ9XX0=">
-
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Gastos">
 <meta name="theme-color" content="#6a3de8">
 <meta name="application-name" content="Controle de Gastos">
-
-<style>
-  /* Remove barra de endereço no standalone */
-  @media all and (display-mode: standalone) {
-    body { margin-top: env(safe-area-inset-top); }
-  }
-</style>
-
-<script>
-  // Registra service worker para funcionar offline e ser instalável
-  if ("serviceWorker" in navigator) {
-    window.addEventListener("load", function() {
-      const swCode = `
-        const CACHE = "gastos-v1";
-        self.addEventListener("install", e => {
-          self.skipWaiting();
-        });
-        self.addEventListener("activate", e => {
-          e.waitUntil(caches.keys().then(keys =>
-            Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
-          ));
-        });
-        self.addEventListener("fetch", e => {
-          e.respondWith(
-            fetch(e.request).catch(() => caches.match(e.request))
-          );
-        });
-      `;
-      const blob = new Blob([swCode], {type: "application/javascript"});
-      const swUrl = URL.createObjectURL(blob);
-      navigator.serviceWorker.register(swUrl).catch(() => {});
-    });
-  }
-
-  // Banner de instalação Android (evento beforeinstallprompt)
-  let deferredPrompt;
-  window.addEventListener("beforeinstallprompt", (e) => {
-    e.preventDefault();
-    deferredPrompt = e;
-    const btn = document.getElementById("pwa-install-btn");
-    if (btn) btn.style.display = "flex";
-  });
-
-  function installPWA() {
-    if (deferredPrompt) {
-      deferredPrompt.prompt();
-      deferredPrompt.userChoice.then(() => {
-        deferredPrompt = null;
-        const btn = document.getElementById("pwa-install-btn");
-        if (btn) btn.style.display = "none";
-      });
-    }
-  }
-
-  window.addEventListener("appinstalled", () => {
-    const btn = document.getElementById("pwa-install-btn");
-    if (btn) btn.style.display = "none";
-  });
-</script>
-
-<!-- Botão de instalação Android (aparece só quando disponível) -->
-<div id="pwa-install-btn" style="
-  display: none;
-  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
-  z-index: 9999;
-  background: linear-gradient(135deg, #6a3de8, #9b8dff);
-  color: white; border: none; border-radius: 999px;
-  padding: 14px 28px; cursor: pointer;
-  font-family: Sora, sans-serif; font-size: 15px; font-weight: 600;
-  box-shadow: 0 6px 30px rgba(106,61,232,0.55);
-  align-items: center; gap: 10px; white-space: nowrap;
-  animation: floatin 2s ease-in-out infinite;
-" onclick="installPWA()">
-  💳 Instalar app na tela inicial
-</div>
-
-<style>
-@keyframes floatin {
-  0%, 100% { transform: translateX(-50%) translateY(0); }
-  50%       { transform: translateX(-50%) translateY(-6px); }
-}
-</style>
 """, unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────
@@ -518,6 +434,47 @@ with col_logout:
         st.session_state.usuario_nome = None
         st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
+
+# ── Banner PWA — instruções de instalação ─────
+# Detecta se já está rodando como PWA instalado (standalone)
+# Se não, mostra o banner com instruções para Android e iOS
+st.markdown("""
+<div id="pwa-banner" style="
+    background: linear-gradient(135deg, #1a1040 0%, #0d1f38 100%);
+    border: 1px solid rgba(155,141,255,0.25);
+    border-radius: 16px; padding: 14px 20px; margin-bottom: 24px;
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 16px; flex-wrap: wrap;
+">
+    <div style="display:flex; align-items:center; gap:12px; flex:1; min-width:220px;">
+        <div style="font-size:28px;">💳</div>
+        <div>
+            <div style="font-size:13px; font-weight:700; color:#c4b5fd; letter-spacing:0.3px;">
+                Instale o app na tela inicial
+            </div>
+            <div style="font-size:12px; color:#6b7280; margin-top:2px; line-height:1.5;">
+                <strong style="color:#9ca3af">Android:</strong> Menu do Chrome ⋮ → "Adicionar à tela inicial"<br>
+                <strong style="color:#9ca3af">iPhone:</strong> Botão compartilhar ↑ → "Adicionar à Tela de Início"
+            </div>
+        </div>
+    </div>
+    <button onclick="document.getElementById('pwa-banner').style.display='none'"
+        style="background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1);
+               color:#6b7280; border-radius:8px; padding:6px 12px; cursor:pointer;
+               font-size:12px; white-space:nowrap; flex-shrink:0;">
+        ✕ Fechar
+    </button>
+</div>
+
+<script>
+  // Esconde o banner se já estiver rodando como PWA instalado
+  if (window.matchMedia("(display-mode: standalone)").matches ||
+      window.navigator.standalone === true) {
+    var b = document.getElementById("pwa-banner");
+    if (b) b.style.display = "none";
+  }
+</script>
+""", unsafe_allow_html=True)
 
 # ── Dashboard ─────────────────────────────────
 df = carregar_lancamentos(uid)
