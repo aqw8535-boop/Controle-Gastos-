@@ -2,7 +2,7 @@ import streamlit as st
 import psycopg2
 import psycopg2.extras
 import pandas as pd
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
 import hashlib
 import re
 import calendar
@@ -202,7 +202,7 @@ def run_query(sql: str, params=None, fetch=False):
         raise
 
 # ─────────────────────────────────────────────
-#  INIT DB
+#  INIT DB — O MURO DO MÉXICO CONSTRUÍDO
 # ─────────────────────────────────────────────
 def init_db():
     run_query("""
@@ -211,6 +211,16 @@ def init_db():
             nome  TEXT NOT NULL,
             email TEXT NOT NULL UNIQUE,
             senha TEXT NOT NULL
+        )
+    """)
+    # TABELA PAYWALL: Quem comprou e até quando pode usar
+    run_query("""
+        CREATE TABLE IF NOT EXISTS licencas_ativas (
+            id             SERIAL PRIMARY KEY,
+            email          TEXT NOT NULL UNIQUE,
+            tipo_licenca   TEXT NOT NULL, -- 'assinatura' ou 'vitalicio'
+            expira_em      DATE,          -- NULL se for vitalício
+            criado_em      TIMESTAMP NOT NULL DEFAULT NOW()
         )
     """)
     run_query("""
@@ -253,6 +263,32 @@ def init_db():
         """)
 
 # ─────────────────────────────────────────────
+#  VALIDADOR DO PAYWALL (O CHEQUE DO MURO)
+# ─────────────────────────────────────────────
+def verificar_status_licenca(email: str) -> tuple:
+    """Retorna (permitido: bool, motivo: str)"""
+    try:
+        rows = run_query("SELECT * FROM licencas_ativas WHERE email = %s", (email.strip().lower(),), fetch=True)
+        if not rows:
+            return False, "não_autorizado"
+        
+        licenca = rows[0]
+        if licenca["tipo_licenca"] == "vitalicio":
+            return True, "vitalicio"
+            
+        if licenca["tipo_licenca"] == "assinatura":
+            if licenca["expira_em"] is None:
+                return True, "assinatura_valida"
+            if to_date(licenca["expira_em"]) >= date.today():
+                return True, "assinatura_valida"
+            else:
+                return False, "assinatura_expirada"
+                
+        return False, "invalido"
+    except Exception:
+        return False, "erro"
+
+# ─────────────────────────────────────────────
 #  HELPERS
 # ─────────────────────────────────────────────
 def hash_senha(s: str) -> str:
@@ -269,6 +305,15 @@ def to_date(val):
 
 # ── Usuários ──────────────────────────────────
 def criar_usuario(nome, email, senha):
+    # O MURO NO CADASTRO: Só cria se comprou!
+    permitido, motivo = verificar_status_licenca(email)
+    if not permitido:
+        if motivo == "não_autorizado":
+            return False, "Acesso Negado! Este e-mail não possui uma licença ativa. Compre o acesso na nossa página oficial antes de se cadastrar."
+        elif motivo == "assinatura_expirada":
+            return False, "Sua assinatura expirou! Por favor, realize a renovação para reativar seu cadastro."
+        return False, "Licença de acesso inválida."
+
     try:
         run_query(
             "INSERT INTO usuarios (nome, email, senha) VALUES (%s, %s, %s)",
@@ -286,6 +331,11 @@ def criar_usuario(nome, email, senha):
 
 def autenticar_usuario(email, sender_senha):
     try:
+        # O MURO NO LOGIN: Mesmo que tenha conta, se a assinatura venceu, barra!
+        permitido, _ = verificar_status_licenca(email)
+        if not permitido:
+            return "bloqueado"
+
         rows = run_query(
             "SELECT id, nome FROM usuarios WHERE email=%s AND senha=%s",
             (email.strip().lower(), hash_senha(sender_senha)), fetch=True
@@ -377,7 +427,7 @@ def avancar_parcela_parcelada_excel(id_, inicio_pagamento, parcelas_totais, parc
 def inserir_feedback(uid, mensagem):
     try:
         run_query(
-            "INSERT INTO feedbacks (usuario_id, mensagem) VALUES (%s,%s)",
+            "INSERT INTO feedbacks (usuario_id, message) VALUES (%s,%s)",
             (uid, mensagem.strip())
         )
         return True
@@ -483,7 +533,9 @@ if st.session_state.usuario_id is None:
                     st.error("Preencha e-mail e senha.")
                 else:
                     resultado = autenticar_usuario(email_login, senha_login)
-                    if resultado:
+                    if resultado == "bloqueado":
+                        st.error("🛑 Acesso Bloqueado! Sua assinatura expirou ou seu e-mail não está autorizado no sistema. Entre em contato com o suporte para renovar.")
+                    elif resultado:
                         st.session_state.usuario_id   = resultado[0]
                         st.session_state.usuario_nome = resultado[1]
                         st.query_params["s"] = str(resultado[0])
@@ -493,12 +545,12 @@ if st.session_state.usuario_id is None:
 
             st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
             numero_suporte = "5567991158892"
-            msg_wa = "Olá! Esqueci minha senha do app Gastei. Pode me ajudar?"
+            msg_wa = "Olá! Quero verificar o status do meu acesso no app Gastei."
             link_wa = f"https://wa.me/{numero_suporte}?text={msg_wa.replace(' ', '%20')}"
             st.markdown(f"""
             <div style='text-align:center; margin-top:4px;'>
                 <a href="{link_wa}" target="_blank" style="color:#9b8dff; font-size:13px; text-decoration:none; opacity:0.8;">
-                    🔒 Esqueci minha senha — Falar com o Suporte
+                    🔒 Problemas com o acesso? — Falar com o Suporte
                 </a>
             </div>
             """, unsafe_allow_html=True)
@@ -510,7 +562,7 @@ if st.session_state.usuario_id is None:
         with aba_cadastro:
             st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
             nome_cad   = st.text_input("Seu nome",        key="cad_nome",   placeholder="João Silva")
-            email_cad  = st.text_input("E-mail",          key="cad_email",  placeholder="seu@email.com")
+            email_cad  = st.text_input("E-mail",          key="cad_email",  placeholder="O mesmo e-mail usado na compra")
             senha_cad  = st.text_input("Senha", type="password", key="cad_senha",  placeholder="Mínimo 6 caracteres")
             senha_cad2 = st.text_input("Confirmar senha", type="password", key="cad_senha2", placeholder="Repita a senha")
             st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
@@ -529,7 +581,7 @@ if st.session_state.usuario_id is None:
                     for e in erros: st.error(e)
                 else:
                     ok, msg = criar_usuario(nome_cad, email_cad, senha_cad)
-                    if ok: st.success("✅ Conta criada! Faça login na aba ao lado.")
+                    if ok: st.success("✅ Conta autorizada e criada! Faça login na aba ao lado.")
                     else:  st.error(msg)
     st.stop()
 
@@ -652,7 +704,6 @@ with aba_principal:
         df["_sort_key"] = df.apply(get_sort_key, axis=1)
         df = df.sort_values(by="_sort_key").drop(columns=["_sort_key"])
         
-        # Cabeçalhos
         st.markdown("""
         <div style="display:grid; grid-template-columns: 2.2fr 1fr 1fr 1fr 0.8fr; padding:10px 24px; font-size:11px; font-weight:700; color:#6b7280; text-transform:uppercase; letter-spacing:1px;">
             <div>Descrição</div>
@@ -715,7 +766,6 @@ with aba_principal:
                 elif eh_fixa:
                     st.markdown("<div style='padding-top:18px'><span class='badge-fixa'>Recorrente ∞</span></div>", unsafe_allow_html=True)
                 else:
-                    # ── CÁLCULO DA DATA DA ÚLTIMA PARCELA (ESTILO EXCEL) ──
                     try:
                         meses_para_fim = max(0, parc_restantes - 1)
                         dia_u = venc_data.day
@@ -770,7 +820,7 @@ with aba_principal:
 # ABA 2 — FEEDBACK
 # ══════════════════════════════
 with aba_feedback:
-    st.markdown("### 💬 Canal Direto de Sugestões & Feedbacks")
+    st.markdown("### 💬 Canal Direct de Sugestões & Feedbacks")
     st.markdown("<p style='color:#9ca3af; margin-top:-10px;'>Sua opinião molda as próximas atualizações da nossa plataforma!</p>", unsafe_allow_html=True)
     
     with st.container():
@@ -790,7 +840,6 @@ with aba_feedback:
                 elif len(mensagem_fb.strip()) < 8:
                     st.error("⚠️ Detalhe um pouquinho mais a sua mensagem.")
                 else:
-                    # Correção de variável efetuada de forma segura
                     if inserir_feedback(uid, mensagem_fb):
                         st.success("✅ Feedback enviado com absoluto sucesso! Muito obrigado 🙏")
                         st.balloons()
