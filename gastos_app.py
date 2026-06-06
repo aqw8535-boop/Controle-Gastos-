@@ -5,6 +5,7 @@ import pandas as pd
 from datetime import date, timedelta
 import hashlib
 import re
+import calendar
 
 # ─────────────────────────────────────────────
 #  CONFIG DA PÁGINA
@@ -136,6 +137,12 @@ input::placeholder, textarea::placeholder { color: rgba(80,80,120,0.5) !importan
     background: linear-gradient(135deg, #059669, #34d399) !important;
     font-size: 12px !important; padding: 6px 14px !important;
     box-shadow: 0 2px 10px rgba(5,150,105,0.3) !important; width: auto !important;
+}
+
+.btn-quitar > button {
+    background: linear-gradient(135deg, #7c3aed, #a78bfa) !important;
+    font-size: 12px !important; padding: 6px 14px !important;
+    box-shadow: 0 2px 10px rgba(124,58,237,0.3) !important; width: auto !important;
 }
 
 /* BADGES */
@@ -315,10 +322,57 @@ def excluir_lancamento(id_):
         st.error(f"❌ Erro ao excluir: {e}")
 
 def marcar_pago(id_):
+    """Quita definitivamente o lançamento (pago=TRUE)."""
     try:
         run_query("UPDATE lancamentos SET pago=TRUE WHERE id=%s", (id_,))
     except Exception as e:
         st.error(f"❌ Erro ao marcar como pago: {e}")
+
+def avancar_parcela_recorrente(id_, inicio_pagamento):
+    """
+    Pagar parcela de conta FIXA/RECORRENTE:
+    avança o inicio_pagamento em +1 mês, mantendo pago=FALSE.
+    Isso faz a conta reaparecer corretamente no próximo vencimento.
+    """
+    try:
+        inicio = to_date(inicio_pagamento)
+        dia = inicio.day
+        mes = inicio.month % 12 + 1
+        ano = inicio.year + (1 if inicio.month == 12 else 0)
+        try:
+            novo_inicio = date(ano, mes, dia)
+        except ValueError:
+            import calendar
+            ultimo = calendar.monthrange(ano, mes)[1]
+            novo_inicio = date(ano, mes, ultimo)
+        run_query(
+            "UPDATE lancamentos SET inicio_pagamento=%s, pago=FALSE WHERE id=%s",
+            (novo_inicio, id_)
+        )
+    except Exception as e:
+        st.error(f"❌ Erro ao avançar parcela: {e}")
+
+def avancar_parcela_parcelada(id_, final_pagamento, parcelas_totais):
+    """
+    Pagar UMA parcela de lançamento parcelado:
+    desconta ~1 mês do final_pagamento e reduz parcelas_totais em 1.
+    Se restar 0 parcelas, quita automaticamente (pago=TRUE).
+    """
+    try:
+        final  = to_date(final_pagamento)
+        parc_rest = calcular_parcelas_a_pagar(final)
+        if parc_rest <= 1:
+            # Última parcela — quita de vez
+            run_query("UPDATE lancamentos SET pago=TRUE WHERE id=%s", (id_,))
+        else:
+            novo_final = final - timedelta(days=30.4375)
+            nova_qtd   = max(1, parcelas_totais - 1)
+            run_query(
+                "UPDATE lancamentos SET final_pagamento=%s, parcelas_totais=%s WHERE id=%s",
+                (novo_final, nova_qtd, id_)
+            )
+    except Exception as e:
+        st.error(f"❌ Erro ao avançar parcela: {e}")
 
 def inserir_feedback(uid, mensagem):
     try:
@@ -775,11 +829,24 @@ with aba_principal:
             with col_acoes:
                 st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
                 if not eh_pago:
+                    # Botão "Pagar Parcela" — avança o vencimento sem quitar
                     st.markdown('<div class="btn-pagar">', unsafe_allow_html=True)
-                    if st.button("✅ Pago", key=f"pago_{row['id']}"):
+                    label_parcela = "💸 Pagar Parcela"
+                    if st.button(label_parcela, key=f"parcela_{row['id']}"):
+                        if eh_fixa:
+                            avancar_parcela_recorrente(row["id"], row["inicio_pagamento"])
+                        else:
+                            avancar_parcela_parcelada(row["id"], row["final_pagamento"], row["parcelas_totais"])
+                        st.rerun()
+                    st.markdown('</div>', unsafe_allow_html=True)
+
+                    # Botão "Quitar Dívida" — encerra de vez (pago=TRUE)
+                    st.markdown('<div class="btn-quitar">', unsafe_allow_html=True)
+                    if st.button("🏁 Quitar", key=f"quitar_{row['id']}"):
                         marcar_pago(row["id"])
                         st.rerun()
                     st.markdown('</div>', unsafe_allow_html=True)
+
                 if st.button("🗑️", key=f"del_{row['id']}", help="Excluir"):
                     excluir_lancamento(row["id"])
                     st.rerun()
