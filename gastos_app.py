@@ -202,7 +202,7 @@ def run_query(sql: str, params=None, fetch=False):
         raise
 
 # ─────────────────────────────────────────────
-#  INIT DB — criação + colunas corretas
+#  INIT DB
 # ─────────────────────────────────────────────
 def init_db():
     run_query("""
@@ -213,7 +213,6 @@ def init_db():
             senha TEXT NOT NULL
         )
     """)
-    # Modificação crucial: adicionada coluna parcelas_pagas para o controle estático do Excel
     run_query("""
         CREATE TABLE IF NOT EXISTS lancamentos (
             id               SERIAL PRIMARY KEY,
@@ -237,7 +236,6 @@ def init_db():
         )
     """)
     
-    # Migrações seguras das colunas
     for col, definition in [
         ("recorrente",     "SMALLINT NOT NULL DEFAULT 0"),
         ("usuario_id",     "INTEGER NOT NULL DEFAULT 0"),
@@ -331,14 +329,12 @@ def excluir_lancamento(id_):
         st.error(f"❌ Erro ao excluir: {e}")
 
 def marcar_pago(id_):
-    """Quita definitivamente o lançamento (pago=TRUE)."""
     try:
         run_query("UPDATE lancamentos SET pago=TRUE WHERE id=%s", (id_,))
     except Exception as e:
         st.error(f"❌ Erro ao marcar como pago: {e}")
 
 def avancar_parcela_recorrente(id_, inicio_pagamento):
-    """Conta FIXA: avança inicio_pagamento +1 mês."""
     try:
         inicio = to_date(inicio_pagamento)
         dia = inicio.day
@@ -356,13 +352,6 @@ def avancar_parcela_recorrente(id_, inicio_pagamento):
         st.error(f"❌ Erro ao avançar parcela recorrente: {e}")
 
 def avancar_parcela_parcelada_excel(id_, inicio_pagamento, parcelas_totais, parcelas_pagas_atual):
-    """
-    MATEMÁTICA CORRIGIDA (ESTILO EXCEL):
-    - Incrementa o contador fixo de parcelas_pagas.
-    - Avança a data do próximo vencimento em +1 mês de forma limpa.
-    - Se atingir o total de parcelas, encerra a conta (pago=TRUE).
-    - NUNCA recalculamos ou alteramos a coluna valor_total.
-    """
     try:
         proxima_paga = parcelas_pagas_atual + 1
         
@@ -397,7 +386,7 @@ def inserir_feedback(uid, mensagem):
         return False
 
 # ─────────────────────────────────────────────
-#  LÓGICA DE CÁLCULO — ESTILO EXCEL CONFIÁVEL
+#  LÓGICA DE CÁLCULO
 # ─────────────────────────────────────────────
 def calcular_proxima_recorrente(inicio_pagamento) -> date:
     hoje  = date.today()
@@ -442,7 +431,7 @@ def get_sort_key(row) -> tuple:
     return (1, proxima)
 
 # ─────────────────────────────────────────────
-#  INIT
+#  INIT EXECUTION
 # ─────────────────────────────────────────────
 try:
     init_db()
@@ -663,7 +652,7 @@ with aba_principal:
         df["_sort_key"] = df.apply(get_sort_key, axis=1)
         df = df.sort_values(by="_sort_key").drop(columns=["_sort_key"])
         
-        # Cabeçalhos da tabela manual
+        # Cabeçalhos
         st.markdown("""
         <div style="display:grid; grid-template-columns: 2.2fr 1fr 1fr 1fr 0.8fr; padding:10px 24px; font-size:11px; font-weight:700; color:#6b7280; text-transform:uppercase; letter-spacing:1px;">
             <div>Descrição</div>
@@ -684,7 +673,6 @@ with aba_principal:
             eh_fixa = int(row["recorrente"]) == 1
             pago_fim = bool(row["pago"])
             
-            # Cálculos exatos base Excel
             if eh_fixa:
                 val_exibir = v_tot
                 venc_data = calcular_proxima_recorrente(to_date(row["inicio_pagamento"]))
@@ -692,7 +680,6 @@ with aba_principal:
                 val_exibir = calcular_valor_parcela(v_tot, parc_tot)
                 venc_data = to_date(row["inicio_pagamento"])
                 
-            # Identificação visual de Urgência
             classe_row = "lancamento-row"
             if pago_fim:
                 classe_row += " pago"
@@ -728,9 +715,28 @@ with aba_principal:
                 elif eh_fixa:
                     st.markdown("<div style='padding-top:18px'><span class='badge-fixa'>Recorrente ∞</span></div>", unsafe_allow_html=True)
                 else:
-                    # Informa o Saldo Devedor real estilo planilha do excel
+                    # ── CÁLCULO DA DATA DA ÚLTIMA PARCELA (ESTILO EXCEL) ──
+                    try:
+                        meses_para_fim = max(0, parc_restantes - 1)
+                        dia_u = venc_data.day
+                        mes_u = (venc_data.month + meses_para_fim - 1) % 12 + 1
+                        ano_u = venc_data.year + ((venc_data.month + meses_para_fim - 1) // 12)
+                        try:
+                            data_ultima_parc = date(ano_u, mes_u, dia_u)
+                        except ValueError:
+                            data_ultima_parc = date(ano_u, mes_u, calendar.monthrange(ano_u, mes_u)[1])
+                        txt_ultima = data_ultima_parc.strftime('%d/%m/%Y')
+                    except:
+                        txt_ultima = "--/--/----"
+
                     falta_pagar = max(0.0, v_tot - (parc_pagas * val_exibir))
-                    st.markdown(f"<div style='padding-top:10px'><span class='badge-parcelas'>{parc_restantes}x restantes</span><br><span style='color:#6b7280; font-size:10px;'>Falta pagar: R$ {falta_pagar:,.2f}</span></div>", unsafe_allow_html=True)
+                    st.markdown(f"""
+                    <div style='padding-top:4px'>
+                        <span class='badge-parcelas'>{parc_restantes}x restantes</span><br>
+                        <span style='color:#6b7280; font-size:11px; display:block; margin-top:2px;'>Última parcela: <strong style='color:#90cdf4;'>{txt_ultima}</strong></span>
+                        <span style='color:#6b7280; font-size:10px; display:block;'>Falta pagar: R$ {falta_pagar:,.2f}</span>
+                    </div>
+                    """, unsafe_allow_html=True)
                     
             with col_r5:
                 st.markdown("<div style='padding-top:6px; display:flex; flex-direction:column; gap:4px;'>", unsafe_allow_html=True)
@@ -779,11 +785,12 @@ with aba_feedback:
         col_fb, _ = st.columns([1, 3])
         with col_fb:
             if st.button("📨 Enviar Meu Feedback", key="btn_feedback"):
-                if not message_fb.strip():
+                if not mensagem_fb.strip():
                     st.error("⚠️ Escreva algo antes de clicar em enviar.")
                 elif len(mensagem_fb.strip()) < 8:
                     st.error("⚠️ Detalhe um pouquinho mais a sua mensagem.")
                 else:
+                    # Correção de variável efetuada de forma segura
                     if inserir_feedback(uid, mensagem_fb):
                         st.success("✅ Feedback enviado com absoluto sucesso! Muito obrigado 🙏")
                         st.balloons()
