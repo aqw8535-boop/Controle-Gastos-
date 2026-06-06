@@ -73,7 +73,8 @@ h2, h3 { font-family: 'Sora', sans-serif !important; color: #c9d1f0 !important; 
 
 .parcela-card {
     background: linear-gradient(135deg, #1e3a5f 0%, #0d2137 100%);
-    border: 1px solid rgba(100,181,246,0.25); border-radius: 20px; padding: 24px 32px;
+    border: 1px solid rgba(100,181,246,0.25); border-radius: 20px;
+    padding: 24px 32px;
     box-shadow: 0 4px 20px rgba(0,0,0,0.3); margin-bottom: 32px;
     display: flex; align-items: center; justify-content: space-between;
 }
@@ -82,15 +83,17 @@ h2, h3 { font-family: 'Sora', sans-serif !important; color: #c9d1f0 !important; 
 
 /* FORMULÁRIO */
 .form-section {
-    background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.09);
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.09);
     border-radius: 20px; padding: 28px 32px; margin-bottom: 32px; backdrop-filter: blur(10px);
 }
 
 /* LINHAS TABELA */
 .lancamento-row {
     background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 14px; padding: 18px 24px; margin-bottom: 10px;
-    display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 0.5fr;
+    border-radius: 14px; padding: 18px 24px;
+    margin-bottom: 10px;
+    display: grid; grid-template-columns: 2.2fr 1fr 1fr 1fr 0.8fr;
     align-items: center; transition: all 0.2s;
 }
 .lancamento-row:hover { background: rgba(155,141,255,0.08); border-color: rgba(155,141,255,0.3); }
@@ -108,7 +111,8 @@ input, textarea,
 div[data-testid="stTextInput"] input,
 div[data-testid="stNumberInput"] input,
 div[data-testid="stDateInput"] input {
-    border-radius: 10px !important; color: #1a1a2e !important;
+    border-radius: 10px !important;
+    color: #1a1a2e !important;
     font-family: 'Sora', sans-serif !important; font-size: 15px !important;
     caret-color: #6a3de8 !important;
 }
@@ -120,7 +124,8 @@ input::placeholder, textarea::placeholder { color: rgba(80,80,120,0.5) !importan
     background: linear-gradient(135deg, #6a3de8, #9b8dff) !important;
     color: white !important; border: none !important; border-radius: 12px !important;
     font-family: 'Sora', sans-serif !important; font-weight: 600 !important;
-    font-size: 14px !important; padding: 12px 28px !important; width: 100% !important;
+    font-size: 14px !important;
+    padding: 12px 28px !important; width: 100% !important;
     letter-spacing: 0.5px !important; box-shadow: 0 4px 20px rgba(106,61,232,0.4) !important;
     transition: all 0.2s !important;
 }
@@ -135,14 +140,14 @@ input::placeholder, textarea::placeholder { color: rgba(80,80,120,0.5) !importan
 
 .btn-pagar > button {
     background: linear-gradient(135deg, #059669, #34d399) !important;
-    font-size: 12px !important; padding: 6px 14px !important;
-    box-shadow: 0 2px 10px rgba(5,150,105,0.3) !important; width: auto !important;
+    font-size: 11px !important; padding: 6px 10px !important;
+    box-shadow: 0 2px 10px rgba(5,150,105,0.3) !important; width: 100% !important;
 }
 
 .btn-quitar > button {
     background: linear-gradient(135deg, #7c3aed, #a78bfa) !important;
-    font-size: 12px !important; padding: 6px 14px !important;
-    box-shadow: 0 2px 10px rgba(124,58,237,0.3) !important; width: auto !important;
+    font-size: 11px !important; padding: 6px 10px !important;
+    box-shadow: 0 2px 10px rgba(124,58,237,0.3) !important; width: 100% !important;
 }
 
 /* BADGES */
@@ -197,7 +202,7 @@ def run_query(sql: str, params=None, fetch=False):
         raise
 
 # ─────────────────────────────────────────────
-#  INIT DB — criação + migrações seguras
+#  INIT DB — criação + colunas corretas
 # ─────────────────────────────────────────────
 def init_db():
     run_query("""
@@ -208,6 +213,7 @@ def init_db():
             senha TEXT NOT NULL
         )
     """)
+    # Modificação crucial: adicionada coluna parcelas_pagas para o controle estático do Excel
     run_query("""
         CREATE TABLE IF NOT EXISTS lancamentos (
             id               SERIAL PRIMARY KEY,
@@ -215,6 +221,7 @@ def init_db():
             descricao        TEXT    NOT NULL,
             valor_total      NUMERIC(12,2) NOT NULL,
             parcelas_totais  INTEGER NOT NULL,
+            parcelas_pagas   INTEGER NOT NULL DEFAULT 0,
             inicio_pagamento DATE    NOT NULL,
             final_pagamento  DATE,
             recorrente       SMALLINT NOT NULL DEFAULT 0,
@@ -229,11 +236,13 @@ def init_db():
             criado_em  TIMESTAMP NOT NULL DEFAULT NOW()
         )
     """)
-    # Migrações seguras
+    
+    # Migrações seguras das colunas
     for col, definition in [
-        ("recorrente", "SMALLINT NOT NULL DEFAULT 0"),
-        ("usuario_id", "INTEGER NOT NULL DEFAULT 0"),
-        ("pago",       "BOOLEAN NOT NULL DEFAULT FALSE"),
+        ("recorrente",     "SMALLINT NOT NULL DEFAULT 0"),
+        ("usuario_id",     "INTEGER NOT NULL DEFAULT 0"),
+        ("pago",           "BOOLEAN NOT NULL DEFAULT FALSE"),
+        ("parcelas_pagas", "INTEGER NOT NULL DEFAULT 0"),
     ]:
         run_query(f"""
             DO $$ BEGIN
@@ -277,11 +286,11 @@ def criar_usuario(nome, email, senha):
         except: pass
         return False, f"Erro ao criar conta: {e}"
 
-def autenticar_usuario(email, senha):
+def autenticar_usuario(email, sender_senha):
     try:
         rows = run_query(
             "SELECT id, nome FROM usuarios WHERE email=%s AND senha=%s",
-            (email.strip().lower(), hash_senha(senha)), fetch=True
+            (email.strip().lower(), hash_senha(sender_senha)), fetch=True
         )
         return (rows[0]["id"], rows[0]["nome"]) if rows else None
     except Exception:
@@ -292,9 +301,9 @@ def inserir_lancamento(uid, descricao, valor_total, parcelas_totais, inicio, fin
     try:
         run_query("""
             INSERT INTO lancamentos
-                (usuario_id, descricao, valor_total, parcelas_totais,
+                (usuario_id, descricao, valor_total, parcelas_totais, parcelas_pagas,
                  inicio_pagamento, final_pagamento, recorrente, pago)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,FALSE)
+            VALUES (%s,%s,%s,%s,0,%s,%s,%s,FALSE)
         """, (uid, descricao, float(valor_total), parcelas_totais,
               inicio, final if final else None, 1 if recorrente else 0))
     except Exception as e:
@@ -307,7 +316,7 @@ def carregar_lancamentos(uid) -> pd.DataFrame:
         )
         if not rows:
             return pd.DataFrame(columns=[
-                "id","usuario_id","descricao","valor_total","parcelas_totais",
+                "id","usuario_id","descricao","valor_total","parcelas_totais","parcelas_pagas",
                 "inicio_pagamento","final_pagamento","recorrente","pago"
             ])
         return pd.DataFrame([dict(r) for r in rows])
@@ -329,10 +338,7 @@ def marcar_pago(id_):
         st.error(f"❌ Erro ao marcar como pago: {e}")
 
 def avancar_parcela_recorrente(id_, inicio_pagamento):
-    """
-    Conta FIXA: avança inicio_pagamento +1 mês, mantém pago=FALSE.
-    O dia de vencimento é preservado; trata meses curtos.
-    """
+    """Conta FIXA: avança inicio_pagamento +1 mês."""
     try:
         inicio = to_date(inicio_pagamento)
         dia = inicio.day
@@ -349,16 +355,19 @@ def avancar_parcela_recorrente(id_, inicio_pagamento):
     except Exception as e:
         st.error(f"❌ Erro ao avançar parcela recorrente: {e}")
 
-def avancar_parcela_parcelada(id_, inicio_pagamento, parcelas_totais):
+def avancar_parcela_parcelada_excel(id_, inicio_pagamento, parcelas_totais, parcelas_pagas_atual):
     """
-    Parcelada: mantém valor da parcela FIXO, avança vencimento +1 mês
-    e decrementa parcelas_totais em 1.
-    Última parcela → quita automaticamente (pago=TRUE).
-    Regra: NÃO mexe em final_pagamento nem em valor_total.
+    MATEMÁTICA CORRIGIDA (ESTILO EXCEL):
+    - Incrementa o contador fixo de parcelas_pagas.
+    - Avança a data do próximo vencimento em +1 mês de forma limpa.
+    - Se atingir o total de parcelas, encerra a conta (pago=TRUE).
+    - NUNCA recalculamos ou alteramos a coluna valor_total.
     """
     try:
-        if parcelas_totais <= 1:
-            run_query("UPDATE lancamentos SET pago=TRUE WHERE id=%s", (id_,))
+        proxima_paga = parcelas_pagas_atual + 1
+        
+        if proxima_paga >= parcelas_totais:
+            run_query("UPDATE lancamentos SET parcelas_pagas=%s, pago=TRUE WHERE id=%s", (parcelas_totais, id_))
         else:
             inicio = to_date(inicio_pagamento)
             dia = inicio.day
@@ -368,12 +377,13 @@ def avancar_parcela_parcelada(id_, inicio_pagamento, parcelas_totais):
                 novo_inicio = date(ano, mes, dia)
             except ValueError:
                 novo_inicio = date(ano, mes, calendar.monthrange(ano, mes)[1])
+                
             run_query(
-                "UPDATE lancamentos SET inicio_pagamento=%s, parcelas_totais=%s WHERE id=%s",
-                (novo_inicio, parcelas_totais - 1, id_)
+                "UPDATE lancamentos SET inicio_pagamento=%s, parcelas_pagas=%s WHERE id=%s",
+                (novo_inicio, proxima_paga, id_)
             )
     except Exception as e:
-        st.error(f"❌ Erro ao avançar parcela parcelada: {e}")
+        st.error(f"❌ Erro ao avançar parcela: {e}")
 
 def inserir_feedback(uid, mensagem):
     try:
@@ -387,18 +397,8 @@ def inserir_feedback(uid, mensagem):
         return False
 
 # ─────────────────────────────────────────────
-#  LÓGICA DE CÁLCULO
+#  LÓGICA DE CÁLCULO — ESTILO EXCEL CONFIÁVEL
 # ─────────────────────────────────────────────
-def calcular_parcelas_a_pagar(final_pagamento) -> int:
-    hoje  = date.today()
-    final = to_date(final_pagamento)
-    if final is None: return 0
-    return max(0, round(((final - hoje).days / 30.4375) + 0.5))
-
-def calcular_proxima_parcela(final_pagamento, parcelas_a_pagar: int) -> date:
-    final = to_date(final_pagamento)
-    return final - timedelta(days=(parcelas_a_pagar - 1) * 30.4375)
-
 def calcular_proxima_recorrente(inicio_pagamento) -> date:
     hoje  = date.today()
     inicio = to_date(inicio_pagamento)
@@ -423,27 +423,20 @@ def calcular_gasto_mensal(df: pd.DataFrame) -> float:
         if int(row.get("recorrente", 0)) == 1:
             total += float(row["valor_total"])
         else:
-            final = to_date(row.get("final_pagamento"))
-            if final and calcular_parcelas_a_pagar(final) > 0:
-                total += calcular_valor_parcela(row["valor_total"], row["parcelas_totais"])
+            total += calcular_valor_parcela(row["valor_total"], row["parcelas_totais"])
     return total
 
 def get_sort_key(row) -> tuple:
-    """Chave de ordenação: (0=urgente/hoje, 1=futuro, 2=pago) + data"""
     hoje = date.today()
     if row.get("pago", False):
         return (2, date(9999, 12, 31))
+    
     eh_fixa = int(row.get("recorrente", 0)) == 1
     if eh_fixa:
         proxima = calcular_proxima_recorrente(to_date(row["inicio_pagamento"]))
     else:
-        final = to_date(row.get("final_pagamento"))
-        if final is None:
-            return (2, date(9999, 12, 31))
-        parc = calcular_parcelas_a_pagar(final)
-        if parc == 0:
-            return (2, date(9999, 12, 31))
-        proxima = calcular_proxima_parcela(final, parc)
+        proxima = to_date(row["inicio_pagamento"])
+        
     if proxima <= hoje:
         return (0, proxima)
     return (1, proxima)
@@ -455,25 +448,19 @@ try:
     init_db()
 except Exception as e:
     st.error(f"❌ Erro ao conectar ao banco: {e}")
-    st.info("Verifique os secrets do Supabase em Settings → Secrets.")
     st.stop()
 
 # ─────────────────────────────────────────────
-#  SESSION STATE — persistência no F5
-#  Usa st.query_params para sobreviver ao reload
+#  SESSION STATE
 # ─────────────────────────────────────────────
 if "usuario_id"   not in st.session_state: st.session_state.usuario_id   = None
 if "usuario_nome" not in st.session_state: st.session_state.usuario_nome = None
 
-# Tenta restaurar sessão via query param criptografado
 if st.session_state.usuario_id is None:
     uid_param = st.query_params.get("s", None)
     if uid_param:
         try:
-            rows = run_query(
-                "SELECT id, nome FROM usuarios WHERE id=%s",
-                (int(uid_param),), fetch=True
-            )
+            rows = run_query("SELECT id, nome FROM usuarios WHERE id=%s", (int(uid_param),), fetch=True)
             if rows:
                 st.session_state.usuario_id   = rows[0]["id"]
                 st.session_state.usuario_nome = rows[0]["nome"]
@@ -484,14 +471,13 @@ if st.session_state.usuario_id is None:
 #  TELA DE LOGIN / CADASTRO
 # ═════════════════════════════════════════════
 if st.session_state.usuario_id is None:
-
     _, col_center, _ = st.columns([1, 1.6, 1])
     with col_center:
         st.markdown("""
         <div class="login-wrap">
             <div class="login-logo">💳</div>
-            <div class="login-title">Controle de Gastos</div>
-            <div class="login-sub">Parcelamentos · Contas Fixas · Multi-usuário</div>
+            <div class="login-title">Gastei - Finanças Premium</div>
+            <div class="login-sub">Controle de Gastos de Alta Performance</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -511,27 +497,26 @@ if st.session_state.usuario_id is None:
                     if resultado:
                         st.session_state.usuario_id   = resultado[0]
                         st.session_state.usuario_nome = resultado[1]
-                        # Persiste ID na URL para sobreviver ao F5
                         st.query_params["s"] = str(resultado[0])
                         st.rerun()
                     else:
                         st.error("E-mail ou senha incorretos.")
 
             st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
-            numero_suporte = "5567991158892"  # ← Troque pelo seu número real
-            msg_wa = "Olá! Esqueci minha senha do app Controle de Gastos. Pode me ajudar?"
+            numero_suporte = "5567991158892"
+            msg_wa = "Olá! Esqueci minha senha do app Gastei. Pode me ajudar?"
             link_wa = f"https://wa.me/{numero_suporte}?text={msg_wa.replace(' ', '%20')}"
             st.markdown(f"""
             <div style='text-align:center; margin-top:4px;'>
-                <a href="{link_wa}" target="_blank"
-                   style="color:#9b8dff; font-size:13px; text-decoration:none;
-                          opacity:0.8; transition:opacity 0.2s;"
-                   onmouseover="this.style.opacity=1"
-                   onmouseout="this.style.opacity=0.8">
+                <a href="{link_wa}" target="_blank" style="color:#9b8dff; font-size:13px; text-decoration:none; opacity:0.8;">
                     🔒 Esqueci minha senha — Falar com o Suporte
                 </a>
             </div>
             """, unsafe_allow_html=True)
+            
+            st.markdown("<br>", unsafe_allow_html=True)
+            with st.expander("🛡️ Termos de Uso e Política de Privacidade"):
+                st.write("Seus dados financeiros são armazenados de forma criptografada e privativa na nossa infraestrutura do Supabase. Não compartilhamos e nem realizamos leitura de suas informações para qualquer outra finalidade que não seja o seu controle estrito.")
 
         with aba_cadastro:
             st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
@@ -557,26 +542,20 @@ if st.session_state.usuario_id is None:
                     ok, msg = criar_usuario(nome_cad, email_cad, senha_cad)
                     if ok: st.success("✅ Conta criada! Faça login na aba ao lado.")
                     else:  st.error(msg)
-
     st.stop()
 
 # ═════════════════════════════════════════════
 #  APP PRINCIPAL
 # ═════════════════════════════════════════════
 uid = st.session_state.usuario_id
-# Garante que query param está sempre sincronizado
 st.query_params["s"] = str(uid)
 
-# ── Cabeçalho + logout ────────────────────────
 col_titulo, col_usuario, col_logout = st.columns([5, 2, 1])
 with col_titulo:
-    st.markdown("# 💳 Controle de Gastos")
-    st.markdown("<p style='color:#6b7280; margin-top:-12px; margin-bottom:28px;'>Parcelamentos · Contas Fixas · Vencimentos automáticos</p>", unsafe_allow_html=True)
+    st.markdown("# GASTEI ⚡")
+    st.markdown("<p style='color:#6b7280; margin-top:-12px; margin-bottom:28px;'>Finanças Pessoais Premium Inteligentes</p>", unsafe_allow_html=True)
 with col_usuario:
-    st.markdown(f"""
-    <div style='text-align:right; padding-top:18px; font-size:13px; color:#9ca3af; line-height:1.4;'>
-        Olá, <strong style='color:#c4b5fd'>{st.session_state.usuario_nome}</strong> 👋
-    </div>""", unsafe_allow_html=True)
+    st.markdown(f"<div style='text-align:right; padding-top:18px; font-size:13px; color:#9ca3af;'>Olá, <strong style='color:#c4b5fd'>{st.session_state.usuario_nome}</strong> 👋</div>", unsafe_allow_html=True)
 with col_logout:
     st.markdown("<div style='padding-top:14px'></div>", unsafe_allow_html=True)
     st.markdown('<div class="logout-btn">', unsafe_allow_html=True)
@@ -587,57 +566,22 @@ with col_logout:
         st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
 
-# ── Banner PWA ────────────────────────────────
-st.markdown("""
-<div id="pwa-banner" style="
-    background:linear-gradient(135deg,#1a1040 0%,#0d1f38 100%);
-    border:1px solid rgba(155,141,255,0.25); border-radius:16px;
-    padding:14px 20px; margin-bottom:24px;
-    display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;">
-    <div style="display:flex; align-items:center; gap:12px; flex:1; min-width:220px;">
-        <div style="font-size:28px;">💳</div>
-        <div>
-            <div style="font-size:13px; font-weight:700; color:#c4b5fd;">Instale o app na tela inicial</div>
-            <div style="font-size:12px; color:#6b7280; margin-top:2px; line-height:1.5;">
-                <strong style="color:#9ca3af">Android:</strong> Menu ⋮ → "Adicionar à tela inicial"<br>
-                <strong style="color:#9ca3af">iPhone:</strong> Botão ↑ → "Adicionar à Tela de Início"
-            </div>
-        </div>
-    </div>
-    <button onclick="document.getElementById('pwa-banner').style.display='none'"
-        style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);
-               color:#6b7280;border-radius:8px;padding:6px 12px;cursor:pointer;font-size:12px;">
-        ✕ Fechar
-    </button>
-</div>
-<script>
-  if(window.matchMedia("(display-mode:standalone)").matches||window.navigator.standalone){
-    var b=document.getElementById("pwa-banner"); if(b) b.style.display="none";
-  }
-</script>
-""", unsafe_allow_html=True)
-
-# ═════════════════════════════════════════════
-#  ABAS PRINCIPAIS
-# ═════════════════════════════════════════════
-aba_principal, aba_feedback = st.tabs(["📊  Meus Gastos", "💬  Feedbacks & Sugestões"])
+aba_principal, aba_feedback = st.tabs(["📊 Meus Gastos", "💬 Feedbacks & Sugestões"])
 
 # ══════════════════════════════
-#  ABA 1 — GASTOS
+# ABA 1 — GASTOS
 # ══════════════════════════════
 with aba_principal:
-
-    # ── Dashboard ─────────────────────────────
     df_all = carregar_lancamentos(uid)
     total_saidas = df_all["valor_total"].astype(float).sum() if not df_all.empty else 0.0
     gasto_mensal = calcular_gasto_mensal(df_all) if not df_all.empty else 0.0
-
+    
     col_a, col_b = st.columns(2)
     with col_a:
         st.markdown(f"""
         <div class="total-card">
             <div>
-                <div class="total-label">Total de Saídas (Soma dos Valores)</div>
+                <div class="total-label">Total de Saídas Contratadas</div>
                 <div class="total-value">R$ {total_saidas:,.2f}</div>
             </div>
             <div class="total-icon">📊</div>
@@ -652,19 +596,17 @@ with aba_principal:
             <div style="font-size:48px;opacity:0.4;">📅</div>
         </div>""", unsafe_allow_html=True)
 
-    # ── Formulário novo lançamento ─────────────
     st.markdown("### ➕ Novo Lançamento")
     with st.container():
         st.markdown('<div class="form-section">', unsafe_allow_html=True)
-
         col1, col2 = st.columns([2, 1])
         with col1:
             descricao = st.text_input("O que comprou / Pagou", placeholder="Ex: iPhone 16, Aluguel, Internet...")
         with col2:
             valor_total = st.number_input("Valor Total (R$)", min_value=0.01, step=0.01, format="%.2f")
-
-        is_recorrente = st.checkbox("🔁  Conta Fixa / Recorrente  (sem data de término — Aluguel, Pensão, Internet...)")
-
+            
+        is_recorrente = st.checkbox("🔁 Conta Fixa / Recorrente (sem data de término — Aluguel, Internet...)")
+        
         if is_recorrente:
             col4, _ = st.columns([1, 2])
             with col4:
@@ -676,237 +618,173 @@ with aba_principal:
                 st.markdown("<hr>", unsafe_allow_html=True)
                 pc1, pc2, pc3 = st.columns(3)
                 with pc1: st.markdown(f"**Valor mensal:** `R$ {valor_total:,.2f}`")
-                with pc2: st.markdown("**Tipo:** `🔁 Recorrente (sem fim)`")
+                with pc2: st.markdown("**Tipo:** `🔁 Recorrente`")
                 with pc3: st.markdown(f"**Próximo vencimento:** `{proxima_rec.strftime('%d/%m/%Y')}`")
         else:
-            col3, col4, col5 = st.columns(3)
+            col3, col4 = st.columns(2)
             with col3:
                 parcelas_totais = st.number_input("Número de Parcelas", min_value=1, max_value=360, step=1, value=1)
             with col4:
-                inicio_pagamento = st.date_input("Data de Início", value=date.today(), format="DD/MM/YYYY")
-            with col5:
-                dias_sug = int((parcelas_totais - 1) * 30.4375)
-                final_pagamento = st.date_input("Data Final do Pagamento",
-                                                value=inicio_pagamento + timedelta(days=dias_sug),
-                                                format="DD/MM/YYYY")
+                inicio_pagamento = st.date_input("Data do Primeiro Vencimento", value=date.today(), format="DD/MM/YYYY")
+            
+            final_pagamento = None
             if descricao and valor_total > 0:
-                parc_prev = calcular_parcelas_a_pagar(final_pagamento)
-                prox_prev = calcular_proxima_parcela(final_pagamento, parc_prev) if parc_prev > 0 else None
-                val_p     = calcular_valor_parcela(valor_total, parcelas_totais)
+                val_p = calcular_valor_parcela(valor_total, parcelas_totais)
                 st.markdown("<hr>", unsafe_allow_html=True)
                 pc1, pc2, pc3 = st.columns(3)
                 with pc1: st.markdown(f"**Valor por parcela:** `R$ {val_p:.2f}`")
-                with pc2: st.markdown(f"**Parcelas a pagar hoje:** `{parc_prev}x`")
-                with pc3:
-                    if prox_prev: st.markdown(f"**Próximo vencimento:** `{prox_prev.strftime('%d/%m/%Y')}`")
-                    else:         st.markdown("**Próximo vencimento:** `Quitado ✅`")
-
+                with pc2: st.markdown(f"**Parcelas restantes:** `{parcelas_totais}x`")
+                with pc3: st.markdown(f"**Vencimento da Parcela 1:** `{inicio_pagamento.strftime('%d/%m/%Y')}`")
+                
         col_btn, _ = st.columns([1, 3])
         with col_btn:
             if st.button("💾 Salvar Lançamento"):
                 erros = []
-                if not descricao.strip():
-                    erros.append("⚠️ Preencha a descrição do gasto.")
-                if valor_total <= 0:
-                    erros.append("⚠️ O valor deve ser maior que zero.")
-                if not is_recorrente and final_pagamento and final_pagamento < inicio_pagamento:
-                    erros.append("⚠️ A data final não pode ser anterior à data de início.")
+                if not descricao.strip(): erros.append("⚠️ Preencha a descrição do gasto.")
+                if valor_total <= 0: erros.append("⚠️ O valor deve ser maior que zero.")
                 if erros:
                     for e in erros: st.error(e)
                 else:
-                    inserir_lancamento(uid, descricao.strip(), valor_total, parcelas_totais,
-                                       inicio_pagamento, final_pagamento, is_recorrente)
+                    inserir_lancamento(uid, descricao.strip(), valor_total, parcelas_totais, inicio_pagamento, final_pagamento, is_recorrente)
                     st.success(f"✅ **{descricao}** salvo com sucesso!")
                     st.rerun()
-
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # ── Histórico de lançamentos ───────────────
-    st.markdown("### 📋 Histórico de Lançamentos")
-
+    st.markdown("### 📋 Histórico de Vencimentos")
     df = carregar_lancamentos(uid)
-
     if df.empty:
-        st.markdown("""
-        <div style='text-align:center; padding:60px 20px; color:#4b5563;'>
-            <div style='font-size:48px; margin-bottom:12px;'>📭</div>
-            <div style='font-size:16px;'>Nenhum lançamento ainda.<br>Adicione seu primeiro gasto acima!</div>
-        </div>""", unsafe_allow_html=True)
+        st.markdown("<div style='text-align:center; padding:60px 20px; color:#4b5563;'><div style='font-size:48px;'>📭</div>Nenhum lançamento ainda.</div>", unsafe_allow_html=True)
     else:
-        # Buscador
-        busca = st.text_input("🔍  Filtrar por descrição", placeholder="Digite para buscar...", key="busca")
+        busca = st.text_input("🔍 Filtrar por descrição", placeholder="Digite para buscar...", key="busca")
         if busca.strip():
             df = df[df["descricao"].str.contains(busca.strip(), case=False, na=False)]
-
-        # Ordenação inteligente
+            
         hoje = date.today()
         df["_sort_key"] = df.apply(get_sort_key, axis=1)
-        df = df.sort_values("_sort_key").drop(columns=["_sort_key"])
-
+        df = df.sort_values(by="_sort_key").drop(columns=["_sort_key"])
+        
+        # Cabeçalhos da tabela manual
         st.markdown("""
-        <div style='display:grid; grid-template-columns:2fr 1fr 1fr 1fr 0.7fr;
-                    padding:10px 24px; margin-bottom:4px;
-                    font-size:11px; font-weight:700; letter-spacing:1.5px;
-                    text-transform:uppercase; color:#6b7280;'>
-            <span>Descrição</span><span>Valor</span>
-            <span>Próximo Vencimento</span><span>Situação</span><span>Ações</span>
-        </div>""", unsafe_allow_html=True)
-
+        <div style="display:grid; grid-template-columns: 2.2fr 1fr 1fr 1fr 0.8fr; padding:10px 24px; font-size:11px; font-weight:700; color:#6b7280; text-transform:uppercase; letter-spacing:1px;">
+            <div>Descrição</div>
+            <div>Valor</div>
+            <div>Próximo Vencimento</div>
+            <div>Situação</div>
+            <div style="text-align:center">Ações</div>
+        </div>
+        """, unsafe_allow_html=True)
+        
         for _, row in df.iterrows():
-            eh_fixa = int(row.get("recorrente", 0)) == 1
-            eh_pago = bool(row.get("pago", False))
-
+            id_ = row["id"]
+            desc = row["descricao"]
+            v_tot = float(row["valor_total"])
+            parc_tot = int(row["parcelas_totais"])
+            parc_pagas = int(row.get("parcelas_pagas", 0))
+            parc_restantes = max(0, parc_tot - parc_pagas)
+            eh_fixa = int(row["recorrente"]) == 1
+            pago_fim = bool(row["pago"])
+            
+            # Cálculos exatos base Excel
             if eh_fixa:
-                inicio  = to_date(row["inicio_pagamento"])
-                proxima = calcular_proxima_recorrente(inicio)
-                atrasado = proxima <= hoje and not eh_pago
-                vence_hoje = proxima == hoje and not eh_pago
-
-                if eh_pago:
-                    status_badge = '<span class="badge-pago">✅ Pago</span>'
-                    parc_badge   = '<span class="badge-fixa">🔁 Conta Fixa</span>'
-                    row_class    = "lancamento-row fixa pago"
-                elif vence_hoje:
-                    status_badge = '<span class="badge-hoje">🔥 Vence Hoje</span>'
-                    parc_badge   = '<span class="badge-fixa">🔁 Conta Fixa</span>'
-                    row_class    = "lancamento-row fixa urgente"
-                elif atrasado:
-                    status_badge = f'<span class="badge-urgente">⚠️ Atrasado</span>'
-                    parc_badge   = '<span class="badge-fixa">🔁 Conta Fixa</span>'
-                    row_class    = "lancamento-row fixa urgente"
-                else:
-                    status_badge = f'<span class="badge-vence">📅 {proxima.strftime("%d/%m/%Y")}</span>'
-                    parc_badge   = '<span class="badge-fixa">🔁 Conta Fixa</span>'
-                    row_class    = "lancamento-row fixa"
-
-                valor_label = f"R$ {float(row['valor_total']):,.2f} / mês"
-                sub_info    = f"Vence todo dia {inicio.day:02d} · Início: {inicio.strftime('%d/%m/%Y')}"
-                cor_valor   = "#fbbf24"; label_tipo = "por mês"
+                val_exibir = v_tot
+                venc_data = calcular_proxima_recorrente(to_date(row["inicio_pagamento"]))
             else:
-                final     = to_date(row.get("final_pagamento"))
-                parc_rest = calcular_parcelas_a_pagar(final) if final else 0
-                val_p     = calcular_valor_parcela(row["valor_total"], row["parcelas_totais"])
-                ip        = to_date(row["inicio_pagamento"])
-
-                if eh_pago or parc_rest == 0:
-                    status_badge = '<span class="badge-pago">✅ Pago</span>'
-                    parc_badge   = '<span class="badge-pago">0x</span>'
-                    row_class    = "lancamento-row pago"
+                val_exibir = calcular_valor_parcela(v_tot, parc_tot)
+                venc_data = to_date(row["inicio_pagamento"])
+                
+            # Identificação visual de Urgência
+            classe_row = "lancamento-row"
+            if pago_fim:
+                classe_row += " pago"
+            elif eh_fixa:
+                classe_row += " fixa"
+                if venc_data <= hoje: classe_row += " urgente"
+            else:
+                if venc_data <= hoje: classe_row += " urgente"
+                
+            col_r1, col_r2, col_r3, col_r4, col_r5 = st.columns([2.2, 1, 1, 1, 0.8])
+            
+            with col_r1:
+                sub_desc = f"Total: R$ {v_tot:,.2f} · Início: {to_date(row['inicio_pagamento']).strftime('%d/%m/%Y')}" if not eh_fixa else "Conta Mensal Fixa"
+                st.markdown(f"<div style='padding-top:12px'><strong style='color:#fff; font-size:15px;'>{desc}</strong><br><span style='color:#6b7280; font-size:11px;'>{sub_desc}</span></div>", unsafe_allow_html=True)
+                
+            with col_r2:
+                label_p = "mensal" if eh_fixa else "por parcela"
+                st.markdown(f"<div style='padding-top:12px'><strong style='font-family:JetBrains Mono; color:#9b8dff; font-size:16px;'>R$ {val_exibir:,.2f}</strong><br><span style='color:#6b7280; font-size:11px;'>{label_p}</span></div>", unsafe_allow_html=True)
+                
+            with col_r3:
+                if pago_fim:
+                    st.markdown("<div style='padding-top:18px'><span class='badge-pago'>Concluído ✅</span></div>", unsafe_allow_html=True)
+                elif venc_data == hoje:
+                    st.markdown(f"<div style='padding-top:18px'><span class='badge-hoje'>🔥 HOJE ({venc_data.strftime('%d/%m/%Y')})</span></div>", unsafe_allow_html=True)
+                elif venc_data < hoje:
+                    st.markdown(f"<div style='padding-top:18px'><span class='badge-urgente'>⚠️ ATRASADO ({venc_data.strftime('%d/%m/%Y')})</span></div>", unsafe_allow_html=True)
                 else:
-                    proxima    = calcular_proxima_parcela(final, parc_rest)
-                    atrasado   = proxima < hoje
-                    vence_hoje = proxima == hoje
-                    if vence_hoje:
-                        status_badge = '<span class="badge-hoje">🔥 Vence Hoje</span>'
-                        row_class    = "lancamento-row urgente"
-                    elif atrasado:
-                        status_badge = f'<span class="badge-urgente">⚠️ {proxima.strftime("%d/%m/%Y")}</span>'
-                        row_class    = "lancamento-row urgente"
-                    else:
-                        status_badge = f'<span class="badge-vence">📅 {proxima.strftime("%d/%m/%Y")}</span>'
-                        row_class    = "lancamento-row"
-                    parc_badge = f'<span class="badge-parcelas">🔢 {parc_rest}x restantes</span>'
-
-                valor_label = f"R$ {val_p:,.2f}"
-                sub_info    = f"Total: R$ {float(row['valor_total']):,.2f} · {row['parcelas_totais']}x · Início: {ip.strftime('%d/%m/%Y') if ip else '-'}"
-                cor_valor   = "#a78bfa"; label_tipo = "por parcela"
-
-            col_row, col_acoes = st.columns([10, 2])
-            with col_row:
-                st.markdown(f"""
-                <div class="{row_class}">
-                    <div>
-                        <div style="font-weight:600;color:#e2e8f0;font-size:15px;">{row['descricao']}</div>
-                        <div style="font-size:12px;color:#6b7280;margin-top:2px;">{sub_info}</div>
-                    </div>
-                    <div style="font-family:'JetBrains Mono',monospace;font-weight:700;color:{cor_valor};font-size:16px;">
-                        {valor_label}
-                        <div style="font-size:11px;color:#6b7280;font-weight:400;">{label_tipo}</div>
-                    </div>
-                    <div>{status_badge}</div>
-                    <div>{parc_badge}</div>
-                </div>""", unsafe_allow_html=True)
-
-            with col_acoes:
-                st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
-                if not eh_pago:
-                    # Botão "Pagar Parcela" — avança vencimento, mantém valor fixo
+                    st.markdown(f"<div style='padding-top:18px'><span class='badge-vence'>📅 {venc_data.strftime('%d/%m/%Y')}</span></div>", unsafe_allow_html=True)
+                    
+            with col_r4:
+                if pago_fim:
+                    st.markdown("<div style='padding-top:18px; color:#4b5563; font-size:13px;'>Dívida Encerrada</div>", unsafe_allow_html=True)
+                elif eh_fixa:
+                    st.markdown("<div style='padding-top:18px'><span class='badge-fixa'>Recorrente ∞</span></div>", unsafe_allow_html=True)
+                else:
+                    # Informa o Saldo Devedor real estilo planilha do excel
+                    falta_pagar = max(0.0, v_tot - (parc_pagas * val_exibir))
+                    st.markdown(f"<div style='padding-top:10px'><span class='badge-parcelas'>{parc_restantes}x restantes</span><br><span style='color:#6b7280; font-size:10px;'>Falta pagar: R$ {falta_pagar:,.2f}</span></div>", unsafe_allow_html=True)
+                    
+            with col_r5:
+                st.markdown("<div style='padding-top:6px; display:flex; flex-direction:column; gap:4px;'>", unsafe_allow_html=True)
+                if not pago_fim:
+                    c_pagar = f"btn_p_{id_}"
+                    c_quitar = f"btn_q_{id_}"
+                    
                     st.markdown('<div class="btn-pagar">', unsafe_allow_html=True)
-                    if st.button("💸 Pagar Parcela", key=f"parcela_{row['id']}"):
+                    if st.button("💸 Pagar Parcela", key=c_pagar):
                         if eh_fixa:
-                            avancar_parcela_recorrente(row["id"], row["inicio_pagamento"])
+                            avancar_parcela_recorrente(id_, row["inicio_pagamento"])
                         else:
-                            avancar_parcela_parcelada(row["id"], row["inicio_pagamento"], int(row["parcelas_totais"]))
+                            avancar_parcela_parcelada_excel(id_, row["inicio_pagamento"], parc_tot, parc_pagas)
                         st.rerun()
                     st.markdown('</div>', unsafe_allow_html=True)
-
-                    # Botão "Quitar" — encerra de vez (pago=TRUE)
+                    
                     st.markdown('<div class="btn-quitar">', unsafe_allow_html=True)
-                    if st.button("🏁 Quitar", key=f"quitar_{row['id']}"):
-                        marcar_pago(row["id"])
+                    if st.button("🏁 Quitar Tudo", key=c_quitar):
+                        marcar_pago(id_)
                         st.rerun()
                     st.markdown('</div>', unsafe_allow_html=True)
-
-                if st.button("🗑️", key=f"del_{row['id']}", help="Excluir"):
-                    excluir_lancamento(row["id"])
-                    st.rerun()
-
-        # Rodapé
-        fixas  = sum(1 for _, r in df.iterrows() if int(r.get("recorrente", 0)) == 1 and not r.get("pago", False))
-        ativos = sum(1 for _, r in df.iterrows()
-                     if int(r.get("recorrente", 0)) == 0 and not r.get("pago", False)
-                     and to_date(r.get("final_pagamento")) is not None
-                     and calcular_parcelas_a_pagar(to_date(r["final_pagamento"])) > 0)
-        pagos  = sum(1 for _, r in df.iterrows() if r.get("pago", False))
-        st.markdown(f"""
-        <div style='margin-top:20px;padding:14px 24px;background:rgba(255,255,255,0.03);
-                    border-radius:12px;font-size:13px;color:#6b7280;display:flex;gap:24px;flex-wrap:wrap;'>
-            <span>📦 <strong style='color:#9ca3af'>{len(df)}</strong> lançamentos</span>
-            <span>🔁 <strong style='color:#fbbf24'>{fixas}</strong> contas fixas</span>
-            <span>🔄 <strong style='color:#9ca3af'>{ativos}</strong> parcelamentos ativos</span>
-            <span>✅ <strong style='color:#6ee7b7'>{pagos}</strong> pagos</span>
-            <span>💰 Total: <strong style='color:#a78bfa'>R$ {df_all['valor_total'].astype(float).sum():,.2f}</strong></span>
-        </div>""", unsafe_allow_html=True)
+                else:
+                    if st.button("🗑️ Excluir", key=f"btn_del_{id_}"):
+                        excluir_lancamento(id_)
+                        st.rerun()
+                st.markdown("</div>", unsafe_allow_html=True)
+                
+        st.markdown("<br><br><center style='color:#4b5563; font-size:12px;'>© 2026 Gastei App. Todos os direitos reservados. Suporte: suporte@seudominio.com</center>", unsafe_allow_html=True)
 
 # ══════════════════════════════
-#  ABA 2 — FEEDBACKS
+# ABA 2 — FEEDBACK
 # ══════════════════════════════
 with aba_feedback:
-    st.markdown("### 💬 Feedbacks & Sugestões")
-    st.markdown("<p style='color:#6b7280; margin-bottom:24px;'>Encontrou um bug? Tem uma ideia? Conta pra gente!</p>", unsafe_allow_html=True)
-
+    st.markdown("### 💬 Canal Direto de Sugestões & Feedbacks")
+    st.markdown("<p style='color:#9ca3af; margin-top:-10px;'>Sua opinião molda as próximas atualizações da nossa plataforma!</p>", unsafe_allow_html=True)
+    
     with st.container():
         st.markdown('<div class="form-section">', unsafe_allow_html=True)
-
         mensagem_fb = st.text_area(
             "Sua mensagem",
-            placeholder="Ex: Seria legal ter um gráfico de gastos por mês...\nOu: O botão X está com bug quando faço Y...",
+            placeholder="Ex: Seria massa ver um gráfico de pizza no topo... Ou: Encontrei um bug visual no botão X...",
             height=160,
             key="feedback_texto"
         )
-
+        
         col_fb, _ = st.columns([1, 3])
         with col_fb:
-            if st.button("📨 Enviar Feedback", key="btn_feedback"):
-                if not mensagem_fb.strip():
-                    st.error("⚠️ Escreva sua mensagem antes de enviar.")
-                elif len(mensagem_fb.strip()) < 10:
-                    st.error("⚠️ Mensagem muito curta. Detalhe um pouco mais!")
+            if st.button("📨 Enviar Meu Feedback", key="btn_feedback"):
+                if not message_fb.strip():
+                    st.error("⚠️ Escreva algo antes de clicar em enviar.")
+                elif len(mensagem_fb.strip()) < 8:
+                    st.error("⚠️ Detalhe um pouquinho mais a sua mensagem.")
                 else:
-                    ok = inserir_feedback(uid, mensagem_fb)
-                    if ok:
-                        st.success("✅ Feedback enviado! Obrigado pela contribuição 🙏")
+                    if inserir_feedback(uid, mensagem_fb):
+                        st.success("✅ Feedback enviado com absoluto sucesso! Muito obrigado 🙏")
                         st.balloons()
-
         st.markdown('</div>', unsafe_allow_html=True)
-
-    st.markdown("""
-    <div style='margin-top:32px; padding:20px 24px;
-                background:rgba(155,141,255,0.06); border:1px solid rgba(155,141,255,0.15);
-                border-radius:16px; font-size:13px; color:#9ca3af; line-height:1.8;'>
-        💡 <strong style='color:#c4b5fd'>Dicas de feedback útil:</strong><br>
-        • Descreva o que aconteceu e o que você esperava que acontecesse<br>
-        • Se for um bug, diga qual tela e qual ação você fez antes do erro<br>
-        • Sugestões de novas funcionalidades são sempre bem-vindas!
-    </div>
-    """, unsafe_allow_html=True)
