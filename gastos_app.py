@@ -473,7 +473,7 @@ if st.session_state.usuario_id is None:
                           opacity:0.8; transition:opacity 0.2s;"
                    onmouseover="this.style.opacity=1"
                    onmouseout="this.style.opacity=0.8">
-                    🔒 Esqueci minha senha — Falar no WhatsApp
+                    🔒 Esqueci minha senha — Falar com o Suporte
                 </a>
             </div>
             """, unsafe_allow_html=True)
