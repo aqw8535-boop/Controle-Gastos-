@@ -330,9 +330,8 @@ def marcar_pago(id_):
 
 def avancar_parcela_recorrente(id_, inicio_pagamento):
     """
-    Pagar parcela de conta FIXA/RECORRENTE:
-    avança o inicio_pagamento em +1 mês, mantendo pago=FALSE.
-    Isso faz a conta reaparecer corretamente no próximo vencimento.
+    Conta FIXA: avança inicio_pagamento +1 mês, mantém pago=FALSE.
+    O dia de vencimento é preservado; trata meses curtos.
     """
     try:
         inicio = to_date(inicio_pagamento)
@@ -342,37 +341,39 @@ def avancar_parcela_recorrente(id_, inicio_pagamento):
         try:
             novo_inicio = date(ano, mes, dia)
         except ValueError:
-            import calendar
-            ultimo = calendar.monthrange(ano, mes)[1]
-            novo_inicio = date(ano, mes, ultimo)
+            novo_inicio = date(ano, mes, calendar.monthrange(ano, mes)[1])
         run_query(
             "UPDATE lancamentos SET inicio_pagamento=%s, pago=FALSE WHERE id=%s",
             (novo_inicio, id_)
         )
     except Exception as e:
-        st.error(f"❌ Erro ao avançar parcela: {e}")
+        st.error(f"❌ Erro ao avançar parcela recorrente: {e}")
 
-def avancar_parcela_parcelada(id_, final_pagamento, parcelas_totais):
+def avancar_parcela_parcelada(id_, inicio_pagamento, parcelas_totais):
     """
-    Pagar UMA parcela de lançamento parcelado:
-    desconta ~1 mês do final_pagamento e reduz parcelas_totais em 1.
-    Se restar 0 parcelas, quita automaticamente (pago=TRUE).
+    Parcelada: mantém valor da parcela FIXO, avança vencimento +1 mês
+    e decrementa parcelas_totais em 1.
+    Última parcela → quita automaticamente (pago=TRUE).
+    Regra: NÃO mexe em final_pagamento nem em valor_total.
     """
     try:
-        final  = to_date(final_pagamento)
-        parc_rest = calcular_parcelas_a_pagar(final)
-        if parc_rest <= 1:
-            # Última parcela — quita de vez
+        if parcelas_totais <= 1:
             run_query("UPDATE lancamentos SET pago=TRUE WHERE id=%s", (id_,))
         else:
-            novo_final = final - timedelta(days=30.4375)
-            nova_qtd   = max(1, parcelas_totais - 1)
+            inicio = to_date(inicio_pagamento)
+            dia = inicio.day
+            mes = inicio.month % 12 + 1
+            ano = inicio.year + (1 if inicio.month == 12 else 0)
+            try:
+                novo_inicio = date(ano, mes, dia)
+            except ValueError:
+                novo_inicio = date(ano, mes, calendar.monthrange(ano, mes)[1])
             run_query(
-                "UPDATE lancamentos SET final_pagamento=%s, parcelas_totais=%s WHERE id=%s",
-                (novo_final, nova_qtd, id_)
+                "UPDATE lancamentos SET inicio_pagamento=%s, parcelas_totais=%s WHERE id=%s",
+                (novo_inicio, parcelas_totais - 1, id_)
             )
     except Exception as e:
-        st.error(f"❌ Erro ao avançar parcela: {e}")
+        st.error(f"❌ Erro ao avançar parcela parcelada: {e}")
 
 def inserir_feedback(uid, mensagem):
     try:
@@ -829,18 +830,17 @@ with aba_principal:
             with col_acoes:
                 st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
                 if not eh_pago:
-                    # Botão "Pagar Parcela" — avança o vencimento sem quitar
+                    # Botão "Pagar Parcela" — avança vencimento, mantém valor fixo
                     st.markdown('<div class="btn-pagar">', unsafe_allow_html=True)
-                    label_parcela = "💸 Pagar Parcela"
-                    if st.button(label_parcela, key=f"parcela_{row['id']}"):
+                    if st.button("💸 Pagar Parcela", key=f"parcela_{row['id']}"):
                         if eh_fixa:
                             avancar_parcela_recorrente(row["id"], row["inicio_pagamento"])
                         else:
-                            avancar_parcela_parcelada(row["id"], row["final_pagamento"], row["parcelas_totais"])
+                            avancar_parcela_parcelada(row["id"], row["inicio_pagamento"], int(row["parcelas_totais"]))
                         st.rerun()
                     st.markdown('</div>', unsafe_allow_html=True)
 
-                    # Botão "Quitar Dívida" — encerra de vez (pago=TRUE)
+                    # Botão "Quitar" — encerra de vez (pago=TRUE)
                     st.markdown('<div class="btn-quitar">', unsafe_allow_html=True)
                     if st.button("🏁 Quitar", key=f"quitar_{row['id']}"):
                         marcar_pago(row["id"])
