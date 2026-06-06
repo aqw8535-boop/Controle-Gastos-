@@ -10,7 +10,7 @@ import calendar
 # ─────────────────────────────────────────────
 #  CONFIG DA PÁGINA
 # ─────────────────────────────────────────────
-st.set_page_config(page_title="Controle de Gastos", page_icon="💳", layout="wide")
+st.set_page_config(page_title="Gastei", page_icon="💳", layout="wide")
 
 # ─────────────────────────────────────────────
 #  PWA — META TAGS
