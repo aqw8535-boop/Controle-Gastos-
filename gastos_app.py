@@ -6,6 +6,10 @@ from datetime import date, timedelta, datetime
 import hashlib
 import re
 import calendar
+import smtplib
+import secrets as _secrets
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 # ─────────────────────────────────────────────
 #  CONFIG DA PÁGINA
@@ -131,6 +135,15 @@ input::placeholder, textarea::placeholder { color: rgba(80,80,120,0.5) !importan
 }
 .stButton > button:hover { transform: translateY(-2px) !important; box-shadow: 0 8px 30px rgba(106,61,232,0.6) !important; }
 
+.btn-link > button {
+    background: transparent !important; border: none !important;
+    color: #9b8dff !important; font-size: 13px !important;
+    padding: 4px 0 !important; box-shadow: none !important;
+    width: auto !important; text-decoration: underline !important;
+    text-underline-offset: 3px !important; opacity: 0.85 !important;
+}
+.btn-link > button:hover { opacity: 1 !important; transform: none !important; box-shadow: none !important; }
+
 .logout-btn > button {
     background: rgba(255,255,255,0.06) !important; border: 1px solid rgba(255,255,255,0.12) !important;
     font-size: 12px !important; padding: 6px 14px !important;
@@ -246,6 +259,18 @@ def init_db():
         )
     """)
     
+    # Tabela de tokens de redefinição de senha
+    run_query("""
+        CREATE TABLE IF NOT EXISTS reset_tokens (
+            id         SERIAL PRIMARY KEY,
+            email      TEXT NOT NULL,
+            token      TEXT NOT NULL UNIQUE,
+            criado_em  TIMESTAMP NOT NULL DEFAULT NOW(),
+            usado      BOOLEAN NOT NULL DEFAULT FALSE
+        )
+    """)
+
+    # Migrações de colunas — lancamentos
     for col, definition in [
         ("recorrente",     "SMALLINT NOT NULL DEFAULT 0"),
         ("usuario_id",     "INTEGER NOT NULL DEFAULT 0"),
@@ -261,6 +286,17 @@ def init_db():
                 END IF;
             END$$
         """)
+
+    # Migração: telefone na tabela usuarios
+    run_query("""
+        DO $$ BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name='usuarios' AND column_name='telefone'
+            ) THEN ALTER TABLE usuarios ADD COLUMN telefone TEXT DEFAULT '';
+            END IF;
+        END$$
+    """)
 
 # ─────────────────────────────────────────────
 #  VALIDADOR DO PAYWALL (O CHEQUE DO MURO)
@@ -303,8 +339,109 @@ def to_date(val):
     if hasattr(val, "date"): return val.date()
     return date.fromisoformat(str(val))
 
+# ── Reset de Senha ──────────────────────────────
+def gerar_token_reset(email: str) -> str | None:
+    """Cria token de 6 dígitos, salva no banco e retorna o token."""
+    try:
+        # Invalida tokens anteriores não usados para o mesmo e-mail
+        run_query(
+            "UPDATE reset_tokens SET usado=TRUE WHERE email=%s AND usado=FALSE",
+            (email.strip().lower(),)
+        )
+        token = str(_secrets.randbelow(900000) + 100000)  # 100000–999999
+        run_query(
+            "INSERT INTO reset_tokens (email, token) VALUES (%s, %s)",
+            (email.strip().lower(), token)
+        )
+        return token
+    except Exception as e:
+        st.error(f"❌ Erro ao gerar token: {e}")
+        return None
+
+def validar_token_reset(email: str, token: str) -> bool:
+    """Verifica se o token é válido (emitido nos últimos 15 min e não usado)."""
+    try:
+        rows = run_query(
+            """SELECT id FROM reset_tokens
+               WHERE email=%s AND token=%s AND usado=FALSE
+                 AND criado_em > NOW() - INTERVAL '15 minutes'""",
+            (email.strip().lower(), token.strip()),
+            fetch=True
+        )
+        return bool(rows)
+    except Exception:
+        return False
+
+def consumir_token_reset(email: str, token: str) -> bool:
+    """Marca o token como usado após a troca de senha."""
+    try:
+        run_query(
+            "UPDATE reset_tokens SET usado=TRUE WHERE email=%s AND token=%s",
+            (email.strip().lower(), token.strip())
+        )
+        return True
+    except Exception:
+        return False
+
+def trocar_senha(email: str, nova_senha: str) -> bool:
+    try:
+        run_query(
+            "UPDATE usuarios SET senha=%s WHERE email=%s",
+            (hash_senha(nova_senha), email.strip().lower())
+        )
+        return True
+    except Exception as e:
+        st.error(f"❌ Erro ao trocar senha: {e}")
+        return False
+
+def enviar_email_reset(destinatario: str, token: str) -> bool:
+    """Envia o token de redefinição via SMTP. Credenciais em st.secrets['email']."""
+    try:
+        cfg = st.secrets["email"]
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = "🔐 Gastei — Código de Redefinição de Senha"
+        msg["From"]    = cfg["remetente"]
+        msg["To"]      = destinatario
+
+        html = f"""
+        <div style="font-family:Sora,sans-serif; max-width:480px; margin:auto;
+                    background:#1a1a2e; border-radius:16px; padding:40px; color:#e8e4ff;">
+            <div style="text-align:center; font-size:48px; margin-bottom:8px;">💳</div>
+            <h2 style="text-align:center; background:linear-gradient(90deg,#9b8dff,#64b5f6);
+                       -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+                       margin-bottom:24px;">Redefinição de Senha</h2>
+            <p style="color:#9ca3af; text-align:center; margin-bottom:32px;">
+                Use o código abaixo para redefinir sua senha.<br>
+                Ele expira em <strong style="color:#e8e4ff;">15 minutos</strong>.
+            </p>
+            <div style="background:#6a3de8; border-radius:12px; padding:20px;
+                        text-align:center; letter-spacing:12px;
+                        font-size:36px; font-weight:700; color:#fff;
+                        font-family:'JetBrains Mono',monospace; margin-bottom:28px;">
+                {token}
+            </div>
+            <p style="color:#6b7280; font-size:12px; text-align:center;">
+                Se você não solicitou isso, ignore este e-mail.<br>
+                Suporte: suporte@finatec.com.br
+            </p>
+        </div>
+        """
+        msg.attach(MIMEText(html, "html"))
+
+        with smtplib.SMTP_SSL(cfg["smtp_host"], int(cfg.get("smtp_port", 465))) as srv:
+            srv.login(cfg["remetente"], cfg["senha_smtp"])
+            srv.sendmail(cfg["remetente"], destinatario, msg.as_string())
+        return True
+    except Exception as e:
+        st.error(f"❌ Falha ao enviar e-mail: {e}")
+        return False
+
+def telefone_valido(tel: str) -> bool:
+    digits = re.sub(r'\D', '', tel)
+    return 10 <= len(digits) <= 13
+
 # ── Usuários ──────────────────────────────────
-def criar_usuario(nome, email, senha):
+def criar_usuario(nome, email, senha, telefone=""):
     # O MURO NO CADASTRO: Só cria se comprou!
     permitido, motivo = verificar_status_licenca(email)
     if not permitido:
@@ -316,8 +453,8 @@ def criar_usuario(nome, email, senha):
 
     try:
         run_query(
-            "INSERT INTO usuarios (nome, email, senha) VALUES (%s, %s, %s)",
-            (nome.strip(), email.strip().lower(), hash_senha(senha))
+            "INSERT INTO usuarios (nome, email, senha, telefone) VALUES (%s, %s, %s, %s)",
+            (nome.strip(), email.strip().lower(), hash_senha(senha), telefone.strip())
         )
         return True, "ok"
     except psycopg2.errors.UniqueViolation:
@@ -427,7 +564,7 @@ def avancar_parcela_parcelada_excel(id_, inicio_pagamento, parcelas_totais, parc
 def inserir_feedback(uid, mensagem):
     try:
         run_query(
-            "INSERT INTO feedbacks (usuario_id, message) VALUES (%s,%s)",
+            "INSERT INTO feedbacks (usuario_id, mensagem) VALUES (%s,%s)",
             (uid, mensagem.strip())
         )
         return True
@@ -523,56 +660,144 @@ if st.session_state.usuario_id is None:
         aba_login, aba_cadastro = st.tabs(["🔑  Entrar", "✨  Criar Conta"])
 
         with aba_login:
-            st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
-            email_login = st.text_input("E-mail", key="login_email", placeholder="seu@email.com")
-            senha_login = st.text_input("Senha", type="password", key="login_senha", placeholder="••••••••")
-            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+            # ── estado do fluxo de reset ────────────────────────
+            if "reset_step"  not in st.session_state: st.session_state.reset_step  = 0
+            if "reset_email" not in st.session_state: st.session_state.reset_email = ""
 
-            if st.button("Entrar →", key="btn_login"):
-                if not email_login or not senha_login:
-                    st.error("Preencha e-mail e senha.")
-                else:
-                    resultado = autenticar_usuario(email_login, senha_login)
-                    if resultado == "bloqueado":
-                        st.error("🛑 Acesso Bloqueado! Sua assinatura expirou ou seu e-mail não está autorizado no sistema. Entre em contato com o suporte para renovar.")
-                    elif resultado:
-                        st.session_state.usuario_id   = resultado[0]
-                        st.session_state.usuario_nome = resultado[1]
-                        st.query_params["s"] = str(resultado[0])
-                        st.rerun()
+            if st.session_state.reset_step == 0:
+                # ── tela normal de login ─────────────────────────
+                st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+                email_login = st.text_input("E-mail", key="login_email", placeholder="seu@email.com")
+                senha_login = st.text_input("Senha", type="password", key="login_senha", placeholder="••••••••")
+                st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+
+                if st.button("Entrar →", key="btn_login"):
+                    if not email_login or not senha_login:
+                        st.error("Preencha e-mail e senha.")
                     else:
-                        st.error("E-mail ou senha incorretos.")
+                        resultado = autenticar_usuario(email_login, senha_login)
+                        if resultado == "bloqueado":
+                            st.error("🛑 Acesso Bloqueado! Sua assinatura expirou ou seu e-mail não está autorizado. Entre em contato com o suporte para renovar.")
+                        elif resultado:
+                            st.session_state.usuario_id   = resultado[0]
+                            st.session_state.usuario_nome = resultado[1]
+                            st.query_params["s"] = str(resultado[0])
+                            st.rerun()
+                        else:
+                            st.error("E-mail ou senha incorretos.")
 
-            st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
-            numero_suporte = "5567991158892"
-            msg_wa = "Olá! Quero verificar o status do meu acesso no app Gastei."
-            link_wa = f"https://wa.me/{numero_suporte}?text={msg_wa.replace(' ', '%20')}"
-            st.markdown(f"""
-            <div style='text-align:center; margin-top:4px;'>
-                <a href="{link_wa}" target="_blank" style="color:#9b8dff; font-size:13px; text-decoration:none; opacity:0.8;">
-                    🔒 Problemas com o acesso? — Falar com o Suporte
-                </a>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            st.markdown("<br>", unsafe_allow_html=True)
-            with st.expander("🛡️ Termos de Uso e Política de Privacidade"):
-                st.write("Seus dados financeiros são armazenados de forma criptografada e privativa na nossa infraestrutura do Supabase. Não compartilhamos e nem realizamos leitura de suas informações para qualquer outra finalidade que não seja o seu controle estrito.")
+                st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+
+                # ── link "Esqueci minha senha" ───────────────────
+                st.markdown('<div class="btn-link">', unsafe_allow_html=True)
+                if st.button("🔑 Esqueci minha senha", key="btn_forgot"):
+                    st.session_state.reset_step = 1
+                    st.rerun()
+                st.markdown('</div>', unsafe_allow_html=True)
+
+                st.markdown("<div style='height:2px'></div>", unsafe_allow_html=True)
+
+                # ── suporte e link para página de vendas ─────────
+                numero_suporte = "5567991158892"
+                msg_wa = "Olá! Quero verificar o status do meu acesso no app Gastei."
+                link_wa = f"https://wa.me/{numero_suporte}?text={msg_wa.replace(' ', '%20')}"
+                st.markdown(f"""
+                <div style='text-align:center; margin-top:2px;'>
+                    <a href="{link_wa}" target="_blank"
+                       style="color:#9b8dff; font-size:13px; text-decoration:none; opacity:0.8;">
+                        🔒 Problemas com o acesso? — Falar com o Suporte
+                    </a>
+                </div>
+                <div style='text-align:center; margin-top:10px;'>
+                    <a href="https://finatechlab.com/pagina-vendas-gastei/" target="_blank"
+                       style="color:#64b5f6; font-size:12px; text-decoration:none; opacity:0.65;">
+                        🛒 Ainda não tem acesso? Conheça o Gastei →
+                    </a>
+                </div>
+                """, unsafe_allow_html=True)
+
+                st.markdown("<br>", unsafe_allow_html=True)
+                with st.expander("🛡️ Termos de Uso e Política de Privacidade"):
+                    st.write("Seus dados financeiros são armazenados de forma criptografada e privativa na nossa infraestrutura do Supabase. Não compartilhamos e nem realizamos leitura de suas informações para qualquer outra finalidade que não seja o seu controle estrito.")
+
+            elif st.session_state.reset_step == 1:
+                # ── passo 1: informar o e-mail ────────────────────
+                st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+                st.info("📧 Informe o e-mail cadastrado. Enviaremos um código de 6 dígitos.")
+                email_reset = st.text_input("E-mail cadastrado", key="reset_email_input", placeholder="seu@email.com")
+
+                col_enviar, col_voltar = st.columns([1, 1])
+                with col_enviar:
+                    if st.button("Enviar código →", key="btn_send_token"):
+                        if not email_valido(email_reset):
+                            st.error("E-mail inválido.")
+                        else:
+                            # Verifica se o e-mail existe na base
+                            rows = run_query(
+                                "SELECT id FROM usuarios WHERE email=%s",
+                                (email_reset.strip().lower(),), fetch=True
+                            )
+                            if not rows:
+                                st.error("E-mail não encontrado.")
+                            else:
+                                token = gerar_token_reset(email_reset)
+                                if token and enviar_email_reset(email_reset, token):
+                                    st.session_state.reset_email = email_reset.strip().lower()
+                                    st.session_state.reset_step  = 2
+                                    st.rerun()
+                with col_voltar:
+                    if st.button("← Voltar", key="btn_back_1"):
+                        st.session_state.reset_step = 0
+                        st.rerun()
+
+            elif st.session_state.reset_step == 2:
+                # ── passo 2: inserir código + nova senha ──────────
+                st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+                st.success(f"✅ Código enviado para **{st.session_state.reset_email}**. Verifique sua caixa de entrada (e o spam).")
+                codigo = st.text_input("Código de 6 dígitos", key="reset_token_input", placeholder="123456", max_chars=6)
+                nova1  = st.text_input("Nova senha", type="password", key="reset_pass1", placeholder="Mínimo 6 caracteres")
+                nova2  = st.text_input("Confirmar nova senha", type="password", key="reset_pass2", placeholder="Repita a senha")
+
+                col_confirmar, col_voltar2 = st.columns([1, 1])
+                with col_confirmar:
+                    if st.button("Redefinir senha →", key="btn_confirm_reset"):
+                        erros = []
+                        if not codigo.strip():        erros.append("Informe o código recebido.")
+                        if len(nova1) < 6:            erros.append("A senha deve ter pelo menos 6 caracteres.")
+                        if nova1 != nova2:            erros.append("As senhas não conferem.")
+                        if erros:
+                            for e in erros: st.error(e)
+                        elif not validar_token_reset(st.session_state.reset_email, codigo):
+                            st.error("Código inválido ou expirado. Solicite um novo.")
+                        else:
+                            if trocar_senha(st.session_state.reset_email, nova1):
+                                consumir_token_reset(st.session_state.reset_email, codigo)
+                                st.success("🎉 Senha redefinida com sucesso! Faça login.")
+                                st.session_state.reset_step  = 0
+                                st.session_state.reset_email = ""
+                                st.rerun()
+                with col_voltar2:
+                    if st.button("← Voltar", key="btn_back_2"):
+                        st.session_state.reset_step = 1
+                        st.rerun()
 
         with aba_cadastro:
             st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
             nome_cad   = st.text_input("Seu nome",        key="cad_nome",   placeholder="João Silva")
             email_cad  = st.text_input("E-mail",          key="cad_email",  placeholder="O mesmo e-mail usado na compra")
+            tel_cad    = st.text_input("WhatsApp / Telefone", key="cad_tel", placeholder="(67) 99999-9999")
             senha_cad  = st.text_input("Senha", type="password", key="cad_senha",  placeholder="Mínimo 6 caracteres")
             senha_cad2 = st.text_input("Confirmar senha", type="password", key="cad_senha2", placeholder="Repita a senha")
             st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
             if st.button("Criar minha conta →", key="btn_cadastro"):
                 erros = []
-                if not all([nome_cad, email_cad, senha_cad, senha_cad2]):
-                    erros.append("Preencha todos os campos.")
+                if not all([nome_cad, email_cad, tel_cad, senha_cad, senha_cad2]):
+                    erros.append("Preencha todos os campos, incluindo o telefone.")
                 elif not email_valido(email_cad):
                     erros.append("E-mail inválido.")
+                elif not telefone_valido(tel_cad):
+                    erros.append("Telefone inválido. Use o formato (67) 99999-9999.")
                 elif len(senha_cad) < 6:
                     erros.append("A senha deve ter pelo menos 6 caracteres.")
                 elif senha_cad != senha_cad2:
@@ -580,9 +805,19 @@ if st.session_state.usuario_id is None:
                 if erros:
                     for e in erros: st.error(e)
                 else:
-                    ok, msg = criar_usuario(nome_cad, email_cad, senha_cad)
+                    ok, msg = criar_usuario(nome_cad, email_cad, senha_cad, tel_cad)
                     if ok: st.success("✅ Conta autorizada e criada! Faça login na aba ao lado.")
                     else:  st.error(msg)
+
+            # ── link discreto para página de vendas ──────────────
+            st.markdown("""
+            <div style='text-align:center; margin-top:16px;'>
+                <a href="https://finatechlab.com/pagina-vendas-gastei/" target="_blank"
+                   style="color:#64b5f6; font-size:12px; text-decoration:none; opacity:0.65;">
+                    🛒 Ainda não comprou? Conheça os planos do Gastei →
+                </a>
+            </div>
+            """, unsafe_allow_html=True)
     st.stop()
 
 # ═════════════════════════════════════════════
