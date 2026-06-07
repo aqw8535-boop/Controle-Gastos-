@@ -440,9 +440,12 @@ def enviar_email_reset(destinatario: str, token: str) -> bool:
         """
         msg.attach(MIMEText(html, "html"))
 
-        with smtplib.SMTP_SSL(cfg["smtp_host"], int(cfg.get("smtp_port", 465))) as srv:
-            srv.login(cfg["remetente"], cfg["senha_smtp"])
-            srv.sendmail(cfg["remetente"], destinatario, msg.as_string())
+        with smtplib.SMTP(cfg["smtp_host"], int(cfg.get("smtp_port", 587)), timeout=10) as srv:
+    srv.ehlo()
+    srv.starttls()
+    srv.ehlo()
+    srv.login(cfg["remetente"], cfg["senha_smtp"])
+    srv.sendmail(cfg["remetente"], destinatario, msg.as_string())
         return True
     except Exception as e:
         st.error(f"❌ Falha ao enviar e-mail: {e}")
