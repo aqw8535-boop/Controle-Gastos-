@@ -483,9 +483,21 @@ def enviar_email_reset(destinatario: str, token: str) -> bool:
         """
         msg.attach(MIMEText(html, "html"))
 
-        with smtplib.SMTP_SSL(cfg["smtp_host"], int(cfg.get("smtp_port", 465))) as srv:
-            srv.login(cfg["remetente"], cfg["senha_smtp"])
-            srv.sendmail(cfg["remetente"], destinatario, msg.as_string())
+        porta = int(cfg.get("smtp_port", 587))
+        if porta == 465:
+            # SSL direto (alguns provedores)
+            ctx = __import__('ssl').create_default_context()
+            with smtplib.SMTP_SSL(cfg["smtp_host"], porta, context=ctx) as srv:
+                srv.login(cfg["remetente"], cfg["senha_smtp"])
+                srv.sendmail(cfg["remetente"], destinatario, msg.as_string())
+        else:
+            # STARTTLS — padrão Titan / porta 587
+            with smtplib.SMTP(cfg["smtp_host"], porta, timeout=10) as srv:
+                srv.ehlo()
+                srv.starttls()
+                srv.ehlo()
+                srv.login(cfg["remetente"], cfg["senha_smtp"])
+                srv.sendmail(cfg["remetente"], destinatario, msg.as_string())
         return True
     except Exception as e:
         st.error(f"❌ Falha ao enviar e-mail: {e}")
