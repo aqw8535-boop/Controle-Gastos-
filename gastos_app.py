@@ -1,6 +1,7 @@
 import streamlit as st
 import psycopg2
 import psycopg2.extras
+import psycopg2.pool
 import pandas as pd
 from datetime import date, timedelta, datetime
 import hashlib
@@ -181,38 +182,48 @@ hr { border-color:rgba(255,255,255,0.07) !important; margin:28px 0 !important; }
 """, unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────
-#  CONEXÃO POSTGRESQL (Supabase)
+#  CONNECTION POOL — elimina latência de reconexão
 # ─────────────────────────────────────────────
 @st.cache_resource
-def get_conn():
+def get_pool():
     cfg = st.secrets["postgres"]
-    conn = psycopg2.connect(
+    return psycopg2.pool.ThreadedConnectionPool(
+        minconn=1, maxconn=5,
         host=cfg["host"], dbname=cfg["dbname"], user=cfg["user"],
         password=cfg["password"], port=cfg.get("port", 5432),
         sslmode="require", connect_timeout=10,
     )
-    conn.autocommit = False
-    return conn
 
 def run_query(sql: str, params=None, fetch=False):
-    conn = get_conn()
+    pool = get_pool()
+    conn = pool.getconn()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(sql, params or ())
             if fetch:
-                rows = cur.fetchall(); conn.commit(); return rows
+                rows = cur.fetchall()
+                conn.commit()
+                return rows
             conn.commit()
     except psycopg2.OperationalError:
-        get_conn.clear(); conn = get_conn()
+        # reconecta automaticamente via pool
+        try: pool.putconn(conn, close=True)
+        except: pass
+        conn = pool.getconn()
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(sql, params or ())
             if fetch:
-                rows = cur.fetchall(); conn.commit(); return rows
+                rows = cur.fetchall()
+                conn.commit()
+                return rows
             conn.commit()
     except Exception:
         try: conn.rollback()
         except: pass
         raise
+    finally:
+        try: pool.putconn(conn)
+        except: pass
 
 # ─────────────────────────────────────────────
 #  INIT DB — O MURO DO MÉXICO CONSTRUÍDO
@@ -301,8 +312,9 @@ def init_db():
 # ─────────────────────────────────────────────
 #  VALIDADOR DO PAYWALL (O CHEQUE DO MURO)
 # ─────────────────────────────────────────────
+@st.cache_data(ttl=300, show_spinner=False)
 def verificar_status_licenca(email: str) -> tuple:
-    """Retorna (permitido: bool, motivo: str)"""
+    """Retorna (permitido: bool, motivo: str) — cache de 5 min."""
     try:
         rows = run_query("SELECT * FROM licencas_ativas WHERE email = %s", (email.strip().lower(),), fetch=True)
         if not rows:
@@ -491,10 +503,13 @@ def inserir_lancamento(uid, descricao, valor_total, parcelas_totais, inicio, fin
             VALUES (%s,%s,%s,%s,0,%s,%s,%s,FALSE)
         """, (uid, descricao, float(valor_total), parcelas_totais,
               inicio, final if final else None, 1 if recorrente else 0))
+        invalidar_cache_lancamentos()
     except Exception as e:
         st.error(f"❌ Erro ao salvar lançamento: {e}")
 
+@st.cache_data(ttl=30, show_spinner=False)
 def carregar_lancamentos(uid) -> pd.DataFrame:
+    """Cache de 30s — evita query ao banco em cada rerun de UI."""
     try:
         rows = run_query(
             "SELECT * FROM lancamentos WHERE usuario_id=%s", (uid,), fetch=True
@@ -509,15 +524,21 @@ def carregar_lancamentos(uid) -> pd.DataFrame:
         st.error(f"❌ Erro ao carregar lançamentos: {e}")
         return pd.DataFrame()
 
+def invalidar_cache_lancamentos():
+    """Chama após qualquer write para forçar refresh imediato."""
+    carregar_lancamentos.clear()
+
 def excluir_lancamento(id_):
     try:
         run_query("DELETE FROM lancamentos WHERE id=%s", (id_,))
+        invalidar_cache_lancamentos()
     except Exception as e:
         st.error(f"❌ Erro ao excluir: {e}")
 
 def marcar_pago(id_):
     try:
         run_query("UPDATE lancamentos SET pago=TRUE WHERE id=%s", (id_,))
+        invalidar_cache_lancamentos()
     except Exception as e:
         st.error(f"❌ Erro ao marcar como pago: {e}")
 
@@ -535,6 +556,7 @@ def avancar_parcela_recorrente(id_, inicio_pagamento):
             "UPDATE lancamentos SET inicio_pagamento=%s, pago=FALSE WHERE id=%s",
             (novo_inicio, id_)
         )
+        invalidar_cache_lancamentos()
     except Exception as e:
         st.error(f"❌ Erro ao avançar parcela recorrente: {e}")
 
@@ -558,6 +580,7 @@ def avancar_parcela_parcelada_excel(id_, inicio_pagamento, parcelas_totais, parc
                 "UPDATE lancamentos SET inicio_pagamento=%s, parcelas_pagas=%s WHERE id=%s",
                 (novo_inicio, proxima_paga, id_)
             )
+        invalidar_cache_lancamentos()
     except Exception as e:
         st.error(f"❌ Erro ao avançar parcela: {e}")
 
@@ -593,14 +616,17 @@ def calcular_valor_parcela(valor_total, parcelas_totais: int) -> float:
     return float(valor_total) / parcelas_totais if parcelas_totais > 0 else 0.0
 
 def calcular_gasto_mensal(df: pd.DataFrame) -> float:
-    total = 0.0
-    for _, row in df.iterrows():
-        if row.get("pago", False): continue
-        if int(row.get("recorrente", 0)) == 1:
-            total += float(row["valor_total"])
-        else:
-            total += calcular_valor_parcela(row["valor_total"], row["parcelas_totais"])
-    return total
+    if df.empty:
+        return 0.0
+    df_a = df[~df["pago"].astype(bool)].copy()
+    if df_a.empty:
+        return 0.0
+    df_a["valor_total"]     = df_a["valor_total"].astype(float)
+    df_a["parcelas_totais"] = df_a["parcelas_totais"].astype(int)
+    recorrentes  = df_a[df_a["recorrente"].astype(int) == 1]["valor_total"].sum()
+    parcelados   = df_a[df_a["recorrente"].astype(int) == 0]
+    parcela_vals = parcelados["valor_total"] / parcelados["parcelas_totais"].replace(0, 1)
+    return float(recorrentes + parcela_vals.sum())
 
 def get_sort_key(row) -> tuple:
     hoje = date.today()
@@ -620,8 +646,13 @@ def get_sort_key(row) -> tuple:
 # ─────────────────────────────────────────────
 #  INIT EXECUTION
 # ─────────────────────────────────────────────
-try:
+@st.cache_resource
+def init_db_once():
+    """Garante que o init_db rode só uma vez por processo do servidor."""
     init_db()
+
+try:
+    init_db_once()
 except Exception as e:
     st.error(f"❌ Erro ao conectar ao banco: {e}")
     st.stop()
@@ -936,8 +967,21 @@ with aba_principal:
             df = df[df["descricao"].str.contains(busca.strip(), case=False, na=False)]
             
         hoje = date.today()
-        df["_sort_key"] = df.apply(get_sort_key, axis=1)
-        df = df.sort_values(by="_sort_key").drop(columns=["_sort_key"])
+        hoje_s = date.today()
+        df["_pago"]    = df["pago"].astype(bool)
+        df["_rec"]     = df["recorrente"].astype(int) == 1
+        df["_venc_raw"] = df["inicio_pagamento"].apply(to_date)
+        df["_venc"]    = df.apply(
+            lambda r: calcular_proxima_recorrente(r["_venc_raw"]) if r["_rec"] else r["_venc_raw"],
+            axis=1
+        )
+        df["_grp"] = df["_pago"].map({True: 2, False: 0}).where(
+            ~df["_pago"], other=0
+        )
+        df.loc[~df["_pago"] & (df["_venc"] > hoje_s), "_grp"] = 1
+        df = df.sort_values(by=["_grp", "_venc"]).drop(
+            columns=["_pago", "_rec", "_venc_raw", "_venc", "_grp"]
+        )
         
         st.markdown("""
         <div style="display:grid; grid-template-columns: 2.2fr 1fr 1fr 1fr 0.8fr; padding:10px 24px; font-size:11px; font-weight:700; color:#6b7280; text-transform:uppercase; letter-spacing:1px;">
