@@ -104,9 +104,52 @@ h2, h3 { font-family: 'Sora', sans-serif !important; color: #c9d1f0 !important; 
 .lancamento-row:hover { background: rgba(155,141,255,0.08); border-color: rgba(155,141,255,0.3); }
 .lancamento-row.fixa  { border-color: rgba(251,191,36,0.25); }
 .lancamento-row.fixa:hover { background: rgba(251,191,36,0.06); border-color: rgba(251,191,36,0.45); }
-.lancamento-row.urgente { border-color: rgba(239,68,68,0.5); background: rgba(239,68,68,0.06); }
-.lancamento-row.urgente:hover { background: rgba(239,68,68,0.1); }
-.lancamento-row.pago { opacity: 0.45; }
+.lancamento-row.urgente {
+    border-color: rgba(239,68,68,0.7);
+    background: rgba(239,68,68,0.08);
+    box-shadow: 0 0 0 1px rgba(239,68,68,0.3), -4px 0 0 0 #ef4444;
+}
+.lancamento-row.urgente:hover { background: rgba(239,68,68,0.13); }
+.lancamento-row.hoje {
+    border-color: rgba(251,146,60,0.8);
+    background: rgba(251,146,60,0.09);
+    box-shadow: 0 0 0 1px rgba(251,146,60,0.35), -4px 0 0 0 #f97316;
+    animation: pulse-hoje 2s ease-in-out infinite;
+}
+.lancamento-row.hoje:hover { background: rgba(251,146,60,0.15); }
+@keyframes pulse-hoje {
+    0%,100% { box-shadow: 0 0 0 1px rgba(251,146,60,0.35), -4px 0 0 0 #f97316; }
+    50%      { box-shadow: 0 0 14px rgba(251,146,60,0.35), -4px 0 0 0 #f97316; }
+}
+.lancamento-row.em-breve {
+    border-color: rgba(234,179,8,0.55);
+    background: rgba(234,179,8,0.06);
+    box-shadow: -4px 0 0 0 #ca8a04;
+}
+.lancamento-row.em-breve:hover { background: rgba(234,179,8,0.1); }
+.lancamento-row.pago { opacity: 0.38; }
+.alerta-banner {
+    display:flex; align-items:center; gap:8px;
+    background: rgba(239,68,68,0.12);
+    border: 1px solid rgba(239,68,68,0.3);
+    border-radius: 10px; padding: 7px 14px;
+    font-size:11px; font-weight:700; color:#fca5a5;
+    letter-spacing:0.04em; margin-bottom: 20px;
+}
+.alerta-banner .count {
+    background: #ef4444; color:#fff;
+    border-radius: 999px; padding: 1px 8px;
+    font-size:11px; font-weight:800;
+}
+.hoje-banner {
+    display:flex; align-items:center; gap:8px;
+    background: rgba(251,146,60,0.12);
+    border: 1px solid rgba(251,146,60,0.35);
+    border-radius: 10px; padding: 7px 14px;
+    font-size:11px; font-weight:700; color:#fdba74;
+    letter-spacing:0.04em; margin-bottom: 8px;
+}
+.badge-em-breve { background:rgba(234,179,8,0.15); border:1px solid rgba(234,179,8,0.4); color:#fde047; border-radius:999px; padding:4px 12px; font-size:12px; font-weight:700; font-family:'JetBrains Mono',monospace; display:inline-block; }
 
 /* INPUTS */
 label { color:#a0aec0 !important; font-size:13px !important; font-weight:600 !important; letter-spacing:0.5px !important; }
@@ -967,22 +1010,56 @@ with aba_principal:
             df = df[df["descricao"].str.contains(busca.strip(), case=False, na=False)]
             
         hoje = date.today()
-        hoje_s = date.today()
-        df["_pago"]    = df["pago"].astype(bool)
-        df["_rec"]     = df["recorrente"].astype(int) == 1
-        df["_venc_raw"] = df["inicio_pagamento"].apply(to_date)
-        df["_venc"]    = df.apply(
-            lambda r: calcular_proxima_recorrente(r["_venc_raw"]) if r["_rec"] else r["_venc_raw"],
+        df["_pago"] = df["pago"].astype(bool)
+        df["_rec"]  = df["recorrente"].astype(int) == 1
+        df["_venc"] = df.apply(
+            lambda r: calcular_proxima_recorrente(to_date(r["inicio_pagamento"]))
+                      if r["_rec"] else to_date(r["inicio_pagamento"]),
             axis=1
         )
-        df["_grp"] = df["_pago"].map({True: 2, False: 0}).where(
-            ~df["_pago"], other=0
-        )
-        df.loc[~df["_pago"] & (df["_venc"] > hoje_s), "_grp"] = 1
-        df = df.sort_values(by=["_grp", "_venc"]).drop(
-            columns=["_pago", "_rec", "_venc_raw", "_venc", "_grp"]
-        )
+        def _grp(row):
+            if row["_pago"]:               return (4, date(9999,12,31))
+            v = row["_venc"]
+            if v < hoje:                   return (0, v)          # atrasado — mais antigo primeiro
+            if v == hoje:                  return (1, v)          # vence hoje
+            if v <= hoje + timedelta(days=3): return (2, v)       # vence em até 3 dias
+            return (3, v)                                         # futuro
+        df["_sort"] = df.apply(_grp, axis=1)
+        df = df.sort_values("_sort").drop(columns=["_pago", "_rec", "_venc", "_sort"])
         
+        # ── banners de alerta ────────────────────────────────────────
+        df_alerta = carregar_lancamentos(uid)
+        if not df_alerta.empty:
+            _hoje = date.today()
+            _venc_col = df_alerta.apply(
+                lambda r: calcular_proxima_recorrente(to_date(r["inicio_pagamento"]))
+                          if int(r["recorrente"]) == 1 else to_date(r["inicio_pagamento"]),
+                axis=1
+            )
+            _ativos = ~df_alerta["pago"].astype(bool)
+            n_atrasadas = int((_ativos & (_venc_col < _hoje)).sum())
+            n_hoje      = int((_ativos & (_venc_col == _hoje)).sum())
+            n_breve     = int((_ativos & (_venc_col > _hoje) & (_venc_col <= _hoje + timedelta(days=3))).sum())
+
+            if n_atrasadas:
+                pl = "conta atrasada" if n_atrasadas == 1 else "contas atrasadas"
+                st.markdown(f"""
+                <div class="alerta-banner">
+                    🚨 <span class="count">{n_atrasadas}</span> {pl} — quite agora para não acumular juros!
+                </div>""", unsafe_allow_html=True)
+            if n_hoje:
+                pl = "conta vence hoje" if n_hoje == 1 else "contas vencem hoje"
+                st.markdown(f"""
+                <div class="hoje-banner">
+                    🔥 <span style="background:#f97316;color:#fff;border-radius:999px;padding:1px 8px;font-weight:800;">{n_hoje}</span> {pl} — não deixe passar!
+                </div>""", unsafe_allow_html=True)
+            if n_breve and not n_atrasadas and not n_hoje:
+                pl = "conta vence" if n_breve == 1 else "contas vencem"
+                st.markdown(f"""
+                <div style="display:flex;align-items:center;gap:8px;background:rgba(234,179,8,0.09);border:1px solid rgba(234,179,8,0.3);border-radius:10px;padding:7px 14px;font-size:11px;font-weight:700;color:#fde047;margin-bottom:8px;">
+                    ⚡ {n_breve} {pl} nos próximos 3 dias
+                </div>""", unsafe_allow_html=True)
+
         st.markdown("""
         <div style="display:grid; grid-template-columns: 2.2fr 1fr 1fr 1fr 0.8fr; padding:10px 24px; font-size:11px; font-weight:700; color:#6b7280; text-transform:uppercase; letter-spacing:1px;">
             <div>Descrição</div>
@@ -1013,11 +1090,14 @@ with aba_principal:
             classe_row = "lancamento-row"
             if pago_fim:
                 classe_row += " pago"
+            elif venc_data < hoje:
+                classe_row += " urgente"
+            elif venc_data == hoje:
+                classe_row += " hoje"
+            elif venc_data <= hoje + timedelta(days=3):
+                classe_row += " em-breve"
             elif eh_fixa:
                 classe_row += " fixa"
-                if venc_data <= hoje: classe_row += " urgente"
-            else:
-                if venc_data <= hoje: classe_row += " urgente"
                 
             col_r1, col_r2, col_r3, col_r4, col_r5 = st.columns([2.2, 1, 1, 1, 0.8])
             
@@ -1036,6 +1116,10 @@ with aba_principal:
                     st.markdown(f"<div style='padding-top:18px'><span class='badge-hoje'>🔥 HOJE ({venc_data.strftime('%d/%m/%Y')})</span></div>", unsafe_allow_html=True)
                 elif venc_data < hoje:
                     st.markdown(f"<div style='padding-top:18px'><span class='badge-urgente'>⚠️ ATRASADO ({venc_data.strftime('%d/%m/%Y')})</span></div>", unsafe_allow_html=True)
+                elif venc_data <= hoje + timedelta(days=3):
+                    dias_r = (venc_data - hoje).days
+                    txt_r  = f"em {dias_r}d" if dias_r > 0 else "hoje"
+                    st.markdown(f"<div style='padding-top:18px'><span class='badge-em-breve'>⚡ {venc_data.strftime('%d/%m/%Y')} ({txt_r})</span></div>", unsafe_allow_html=True)
                 else:
                     st.markdown(f"<div style='padding-top:18px'><span class='badge-vence'>📅 {venc_data.strftime('%d/%m/%Y')}</span></div>", unsafe_allow_html=True)
                     
