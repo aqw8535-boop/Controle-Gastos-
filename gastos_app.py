@@ -5,6 +5,7 @@ import psycopg2.pool
 import pandas as pd
 from datetime import date, timedelta, datetime
 import hashlib
+import hmac
 import re
 import calendar
 import smtplib
@@ -385,6 +386,35 @@ def verificar_status_licenca(email: str) -> tuple:
 def hash_senha(s: str) -> str:
     return hashlib.sha256(s.encode()).hexdigest()
 
+def _token_secret() -> str:
+    """Chave HMAC lida dos Secrets do Streamlit. Nunca viaja na URL."""
+    return st.secrets.get("token_secret", "dev-fallback-inseguro-troque-nos-secrets")
+
+def gerar_token_sessao(usuario_id: int) -> str:
+    """Gera '{id}.{hmac}' — o ID não pode ser forjado sem conhecer token_secret."""
+    payload = str(usuario_id)
+    sig = hmac.new(
+        _token_secret().encode("utf-8"),
+        payload.encode("utf-8"),
+        hashlib.sha256
+    ).hexdigest()
+    return f"{payload}.{sig}"
+
+def validar_token_sessao(token: str):
+    """Retorna usuario_id (int) se token legítimo, None se inválido ou forjado."""
+    try:
+        payload, sig_recebida = token.rsplit(".", 1)
+        sig_esperada = hmac.new(
+            _token_secret().encode("utf-8"),
+            payload.encode("utf-8"),
+            hashlib.sha256
+        ).hexdigest()
+        if hmac.compare_digest(sig_esperada, sig_recebida):
+            return int(payload)
+    except Exception:
+        pass
+    return None
+
 def email_valido(e: str) -> bool:
     return bool(re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", e))
 
@@ -719,15 +749,21 @@ if "usuario_id"   not in st.session_state: st.session_state.usuario_id   = None
 if "usuario_nome" not in st.session_state: st.session_state.usuario_nome = None
 
 if st.session_state.usuario_id is None:
-    uid_param = st.query_params.get("s", None)
-    if uid_param:
-        try:
-            rows = run_query("SELECT id, nome FROM usuarios WHERE id=%s", (int(uid_param),), fetch=True)
-            if rows:
-                st.session_state.usuario_id   = rows[0]["id"]
-                st.session_state.usuario_nome = rows[0]["nome"]
-        except Exception:
-            pass
+    token_param = st.query_params.get("s", None)
+    if token_param:
+        uid_validado = validar_token_sessao(token_param)
+        if uid_validado:
+            try:
+                rows = run_query("SELECT id, nome FROM usuarios WHERE id=%s", (uid_validado,), fetch=True)
+                if rows:
+                    st.session_state.usuario_id   = rows[0]["id"]
+                    st.session_state.usuario_nome = rows[0]["nome"]
+                else:
+                    st.query_params.clear()   # token órfão — limpa
+            except Exception:
+                pass
+        else:
+            st.query_params.clear()           # token adulterado/forjado — encerra
 
 # ═════════════════════════════════════════════
 #  TELA DE LOGIN / CADASTRO
@@ -767,7 +803,7 @@ if st.session_state.usuario_id is None:
                         elif resultado:
                             st.session_state.usuario_id   = resultado[0]
                             st.session_state.usuario_nome = resultado[1]
-                            st.query_params["s"] = str(resultado[0])
+                            st.query_params["s"] = gerar_token_sessao(resultado[0])
                             st.rerun()
                         else:
                             st.error("E-mail ou senha incorretos.")
@@ -910,7 +946,7 @@ if st.session_state.usuario_id is None:
 #  APP PRINCIPAL
 # ═════════════════════════════════════════════
 uid = st.session_state.usuario_id
-st.query_params["s"] = str(uid)
+st.query_params["s"] = gerar_token_sessao(uid)
 
 col_titulo, col_usuario, col_logout = st.columns([5, 2, 1])
 with col_titulo:
