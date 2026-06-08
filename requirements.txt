@@ -1,4 +1,3 @@
 streamlit
 psycopg2-binary
 pandas
-token_secret = "ccae51a9437e95acb26a67b5ed129884ab404a2af33598340359187056418de7"
