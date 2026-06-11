@@ -1225,7 +1225,8 @@ with aba_principal:
                         st.rerun()
                 st.markdown("</div>", unsafe_allow_html=True)
                 
-        st.markdown("<br><br><center style='color:#4b5563; font-size:12px;'>© 2026 Gastei App. Todos os direitos reservados. Suporte: suporte@seudominio.com</center>", unsafe_allow_html=True)
+        st.markdown("<br><br><center style='color:#4b5563; font-size:12px;'>© 2026 Gastei App. Todos os direitos reservados. Suporte: finatechsuporte@gmail.com
+</center>", unsafe_allow_html=True)
 
 # ══════════════════════════════
 # ABA 2 — FEEDBACK
