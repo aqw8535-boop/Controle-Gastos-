@@ -55,20 +55,22 @@ _LANG_OPTIONS  = {"Português": "PT", "English": "EN", "Français": "FR"}
 _LANG_LABELS   = list(_LANG_OPTIONS.keys())
 _LANG_CODES    = list(_LANG_OPTIONS.values())
 
-# Garante que lang seja sempre um código válido
+# Garante que lang seja sempre um código válido de início
 if st.session_state.lang not in _LANG_CODES:
     st.session_state.lang = "PT"
 
-# INTERCEPTOU O CLIQUE: Se o seletor da tela de login já foi desenhado e mudou,
-# atualiza o estado interno na hora e força o refresh antes de desenhar o formulário!
+# SE DETECTAR O CLIQUE NO RÁDIO DA TELA DE LOGIN:
 if "seletor_idioma" in st.session_state and st.session_state["seletor_idioma"] is not None:
-    # Mapeia o texto do rádio ("🇧🇷 Português", etc) para o código correto ("PT")
-    _texto_selecionado = st.session_state["seletor_idioma"]
-    # Limpa emojis se houver na string para não dar erro no dicionário
-    _texto_limpo = _texto_selecionado.replace("🇧🇷 ", "").replace("🇺🇸 ", "").replace("🇫🇷 ", "")
+    _escolha_usuario = st.session_state["seletor_idioma"]
     
-    _codigo_detectado = _LANG_OPTIONS.get(_texto_limpo, "PT")
-    
+    # Faz uma busca direta para ver qual palavra bate, ignorando o emoji da bandeira
+    _codigo_detectado = "PT"
+    if "English" in _escolha_usuario:
+        _codigo_detectado = "EN"
+    elif "Français" in _escolha_usuario:
+        _codigo_detectado = "FR"
+        
+    # Se o cara clicou em algo diferente do idioma atual do app, vira a chave e dá o boot!
     if st.session_state.lang != _codigo_detectado:
         st.session_state.lang = _codigo_detectado
         st.rerun()
