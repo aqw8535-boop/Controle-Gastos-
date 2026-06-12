@@ -31,6 +31,274 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────
+#  DICIONÁRIO I18N — TRILÍNGUE
+# ─────────────────────────────────────────────
+IDIOMAS = {
+    "PT": {
+        # Geral
+        "app_subtitle":         "Finanças Pessoais Premium Inteligentes",
+        "ola":                  "Olá",
+        "sair":                 "Sair 🚪",
+        # Abas principais
+        "aba_gastos":           "📊 Meus Gastos",
+        "aba_feedback":         "💬 Feedbacks & Sugestões",
+        # Cards de total
+        "total_saidas":         "Total de Saídas Contratadas",
+        "comprometido_mes":     "Comprometido Este Mês",
+        "salario_comprometido": "Salário Comprometido (Próx. Mês)",
+        # Formulário de lançamento
+        "novo_lancamento":      "➕ Novo Lançamento",
+        "o_que_comprou":        "O que comprou / Pagou",
+        "placeholder_desc":     "Ex: iPhone 16, Aluguel, Internet...",
+        "valor_total":          "Valor Total (R$)",
+        "conta_fixa":           "🔁 Conta Fixa / Recorrente (sem data de término — Aluguel, Internet...)",
+        "dia_vencimento":       "Dia de Vencimento (Data de Início)",
+        "num_parcelas":         "Número de Parcelas",
+        "data_primeiro_venc":   "Data do Primeiro Vencimento",
+        "valor_mensal":         "**Valor mensal:**",
+        "tipo_recorrente":      "**Tipo:**",
+        "prox_vencimento":      "**Próximo vencimento:**",
+        "valor_parcela":        "**Valor por parcela:**",
+        "parcelas_restantes":   "**Parcelas restantes:**",
+        "venc_parcela1":        "**Vencimento da Parcela 1:**",
+        "salvar_lancamento":    "💾 Salvar Lançamento",
+        "salvo_sucesso":        "✅ **{}** salvo com sucesso!",
+        "err_descricao":        "⚠️ Preencha a descrição do gasto.",
+        "err_valor":            "⚠️ O valor deve ser maior que zero.",
+        # Histórico
+        "historico":            "### 📋 Histórico de Vencimentos",
+        "filtrar":              "🔍 Filtrar por descrição",
+        "placeholder_busca":    "Digite para buscar...",
+        "nenhum_lancamento":    "Nenhum lançamento ainda.",
+        # Alertas de vencimento
+        "conta_atrasada_s":     "conta atrasada",
+        "conta_atrasada_p":     "contas atrasadas",
+        "alerta_atrasada":      "🚨 {} {} — quite agora para não acumular juros!",
+        "conta_hoje_s":         "conta vence hoje",
+        "conta_hoje_p":         "contas vencem hoje",
+        "alerta_hoje":          "🔥 {} {} — não deixe passar!",
+        "conta_breve_s":        "conta vence",
+        "conta_breve_p":        "contas vencem",
+        "alerta_breve":         "⚡ {} {} nos próximos 3 dias",
+        # Cabeçalho da tabela
+        "col_descricao":        "Descrição",
+        "col_valor":            "Valor",
+        "col_vencimento":       "Próximo Vencimento",
+        "col_situacao":         "Situação",
+        "col_acoes":            "Ações",
+        # Badges e labels de linha
+        "label_mensal":         "mensal",
+        "label_parcela":        "por parcela",
+        "conta_mensal_fixa":    "Conta Mensal Fixa",
+        "total_label":          "Total:",
+        "inicio_label":         "Início:",
+        "divida_encerrada":     "Dívida Encerrada",
+        "ultima_parcela":       "Última parcela:",
+        "falta_pagar":          "Falta pagar:",
+        "recorrente_inf":       "Recorrente ∞",
+        "x_restantes":          "x restantes",
+        # Botões de ação
+        "btn_pagar":            "💸 Pagar Parcela",
+        "btn_quitar":           "🏁 Quitar Tudo",
+        "btn_excluir":          "🗑️ Excluir",
+        # Salário
+        "salario_titulo":       "💰 Meu Salário Mensal",
+        "salario_input":        "Salário Mensal Líquido (R$)",
+        "salario_salvo":        "✅ Salário atualizado!",
+        "salario_zero_aviso":   "⚠️ Cadastre seu salário na barra lateral para ver o % comprometido.",
+        "pct_label":            "% do salário comprometido no próximo mês",
+        # Simulação
+        "simulacao_titulo":     "### 🧮 Simulador de Gasto",
+        "simulacao_desc":       "Simule quanto ficaria comprometido ao adicionar um novo gasto.",
+        "sim_valor":            "Valor do gasto simulado (R$)",
+        "sim_parcelas":         "Em quantas parcelas?",
+        "sim_resultado":        "Com este gasto, você comprometeria **R$ {:.2f}/mês** ({:.1f}% do salário).",
+        "sim_ok":               "✅ Dentro do limite saudável (abaixo de 70% do salário).",
+        "sim_alerta":           (
+            "TEM CERTEZA QUE QUER FAZER ESTA CONTA? {:.1f}% DO SEU SALÁRIO ESTARÁ COMPROMETIDO; "
+            "É MELHOR NÃO FAZER ESTA CONTA, POIS ESTÁ ALÉM DO QUE VOCÊ CONSEGUE PAGAR PARA O PRÓXIMO MÊS"
+        ),
+        # Feedback
+        "feedback_titulo":      "### 💬 Canal Direct de Sugestões & Feedbacks",
+        "feedback_sub":         "Sua opinião molda as próximas atualizações da nossa plataforma!",
+        "feedback_label":       "Sua mensagem",
+        "feedback_placeholder": "Ex: Seria massa ver um gráfico de pizza no topo... Ou: Encontrei um bug visual no botão X...",
+        "feedback_btn":         "📨 Enviar Meu Feedback",
+        "feedback_vazio":       "⚠️ Escreva algo antes de clicar em enviar.",
+        "feedback_curto":       "⚠️ Detalhe um pouquinho mais a sua mensagem.",
+        "feedback_ok":          "✅ Feedback enviado com absoluto sucesso! Muito obrigado 🙏",
+        # Rodapé
+        "rodape":               "© 2026 Gastei App. Todos os direitos reservados. Suporte: finatechsuporte@gmail.com",
+    },
+    "EN": {
+        "app_subtitle":         "Intelligent Premium Personal Finance",
+        "ola":                  "Hello",
+        "sair":                 "Logout 🚪",
+        "aba_gastos":           "📊 My Expenses",
+        "aba_feedback":         "💬 Feedback & Suggestions",
+        "total_saidas":         "Total Contracted Expenses",
+        "comprometido_mes":     "Committed This Month",
+        "salario_comprometido": "Salary Committed (Next Month)",
+        "novo_lancamento":      "➕ New Entry",
+        "o_que_comprou":        "What did you buy / pay",
+        "placeholder_desc":     "e.g.: iPhone 16, Rent, Internet...",
+        "valor_total":          "Total Amount (R$)",
+        "conta_fixa":           "🔁 Fixed / Recurring Bill (no end date — Rent, Internet...)",
+        "dia_vencimento":       "Due Day (Start Date)",
+        "num_parcelas":         "Number of Installments",
+        "data_primeiro_venc":   "First Due Date",
+        "valor_mensal":         "**Monthly amount:**",
+        "tipo_recorrente":      "**Type:**",
+        "prox_vencimento":      "**Next due date:**",
+        "valor_parcela":        "**Installment value:**",
+        "parcelas_restantes":   "**Remaining installments:**",
+        "venc_parcela1":        "**Due date of installment 1:**",
+        "salvar_lancamento":    "💾 Save Entry",
+        "salvo_sucesso":        "✅ **{}** saved successfully!",
+        "err_descricao":        "⚠️ Please fill in the expense description.",
+        "err_valor":            "⚠️ Amount must be greater than zero.",
+        "historico":            "### 📋 Payment History",
+        "filtrar":              "🔍 Filter by description",
+        "placeholder_busca":    "Type to search...",
+        "nenhum_lancamento":    "No entries yet.",
+        "conta_atrasada_s":     "overdue bill",
+        "conta_atrasada_p":     "overdue bills",
+        "alerta_atrasada":      "🚨 {} {} — pay now to avoid late fees!",
+        "conta_hoje_s":         "bill due today",
+        "conta_hoje_p":         "bills due today",
+        "alerta_hoje":          "🔥 {} {} — don't let it pass!",
+        "conta_breve_s":        "bill due",
+        "conta_breve_p":        "bills due",
+        "alerta_breve":         "⚡ {} {} in the next 3 days",
+        "col_descricao":        "Description",
+        "col_valor":            "Amount",
+        "col_vencimento":       "Next Due Date",
+        "col_situacao":         "Status",
+        "col_acoes":            "Actions",
+        "label_mensal":         "monthly",
+        "label_parcela":        "per installment",
+        "conta_mensal_fixa":    "Fixed Monthly Bill",
+        "total_label":          "Total:",
+        "inicio_label":         "Start:",
+        "divida_encerrada":     "Debt Settled",
+        "ultima_parcela":       "Last installment:",
+        "falta_pagar":          "Remaining:",
+        "recorrente_inf":       "Recurring ∞",
+        "x_restantes":          "remaining",
+        "btn_pagar":            "💸 Pay Installment",
+        "btn_quitar":           "🏁 Pay Off All",
+        "btn_excluir":          "🗑️ Delete",
+        "salario_titulo":       "💰 My Monthly Salary",
+        "salario_input":        "Net Monthly Salary (R$)",
+        "salario_salvo":        "✅ Salary updated!",
+        "salario_zero_aviso":   "⚠️ Set your salary in the sidebar to see the committed % of income.",
+        "pct_label":            "% of salary committed next month",
+        "simulacao_titulo":     "### 🧮 Expense Simulator",
+        "simulacao_desc":       "Simulate how much you'd commit by adding a new expense.",
+        "sim_valor":            "Simulated expense amount (R$)",
+        "sim_parcelas":         "In how many installments?",
+        "sim_resultado":        "With this expense, you'd commit **R$ {:.2f}/month** ({:.1f}% of salary).",
+        "sim_ok":               "✅ Within healthy limit (below 70% of salary).",
+        "sim_alerta":           (
+            "ARE YOU SURE YOU WANT TO MAKE THIS EXPENSE? {:.1f}% OF YOUR SALARY WILL BE COMMITTED; "
+            "IT IS BETTER NOT TO MAKE THIS EXPENSE, AS IT IS BEYOND WHAT YOU CAN AFFORD FOR NEXT MONTH"
+        ),
+        "feedback_titulo":      "### 💬 Suggestions & Feedback Channel",
+        "feedback_sub":         "Your opinion shapes the next updates to our platform!",
+        "feedback_label":       "Your message",
+        "feedback_placeholder": "e.g.: It'd be great to see a pie chart at the top... Or: I found a visual bug in button X...",
+        "feedback_btn":         "📨 Send My Feedback",
+        "feedback_vazio":       "⚠️ Please write something before clicking send.",
+        "feedback_curto":       "⚠️ Please elaborate a little more on your message.",
+        "feedback_ok":          "✅ Feedback sent successfully! Thank you so much 🙏",
+        "rodape":               "© 2026 Gastei App. All rights reserved. Support: finatechsuporte@gmail.com",
+    },
+    "FR": {
+        "app_subtitle":         "Finances Personnelles Premium Intelligentes",
+        "ola":                  "Bonjour",
+        "sair":                 "Déconnexion 🚪",
+        "aba_gastos":           "📊 Mes Dépenses",
+        "aba_feedback":         "💬 Retours & Suggestions",
+        "total_saidas":         "Total des Dépenses Contractées",
+        "comprometido_mes":     "Engagé Ce Mois",
+        "salario_comprometido": "Salaire Engagé (Mois Prochain)",
+        "novo_lancamento":      "➕ Nouvelle Entrée",
+        "o_que_comprou":        "Qu'avez-vous acheté / payé",
+        "placeholder_desc":     "Ex: iPhone 16, Loyer, Internet...",
+        "valor_total":          "Montant Total (R$)",
+        "conta_fixa":           "🔁 Facture Fixe / Récurrente (sans date de fin — Loyer, Internet...)",
+        "dia_vencimento":       "Jour d'Échéance (Date de Début)",
+        "num_parcelas":         "Nombre de Versements",
+        "data_primeiro_venc":   "Date de la Première Échéance",
+        "valor_mensal":         "**Montant mensuel :**",
+        "tipo_recorrente":      "**Type :**",
+        "prox_vencimento":      "**Prochaine échéance :**",
+        "valor_parcela":        "**Valeur du versement :**",
+        "parcelas_restantes":   "**Versements restants :**",
+        "venc_parcela1":        "**Échéance du versement 1 :**",
+        "salvar_lancamento":    "💾 Enregistrer",
+        "salvo_sucesso":        "✅ **{}** enregistré avec succès !",
+        "err_descricao":        "⚠️ Veuillez renseigner la description de la dépense.",
+        "err_valor":            "⚠️ Le montant doit être supérieur à zéro.",
+        "historico":            "### 📋 Historique des Échéances",
+        "filtrar":              "🔍 Filtrer par description",
+        "placeholder_busca":    "Tapez pour rechercher...",
+        "nenhum_lancamento":    "Aucune entrée pour l'instant.",
+        "conta_atrasada_s":     "facture en retard",
+        "conta_atrasada_p":     "factures en retard",
+        "alerta_atrasada":      "🚨 {} {} — payez maintenant pour éviter les pénalités !",
+        "conta_hoje_s":         "facture due aujourd'hui",
+        "conta_hoje_p":         "factures dues aujourd'hui",
+        "alerta_hoje":          "🔥 {} {} — ne laissez pas passer !",
+        "conta_breve_s":        "facture due",
+        "conta_breve_p":        "factures dues",
+        "alerta_breve":         "⚡ {} {} dans les 3 prochains jours",
+        "col_descricao":        "Description",
+        "col_valor":            "Montant",
+        "col_vencimento":       "Prochaine Échéance",
+        "col_situacao":         "Statut",
+        "col_acoes":            "Actions",
+        "label_mensal":         "mensuel",
+        "label_parcela":        "par versement",
+        "conta_mensal_fixa":    "Facture Mensuelle Fixe",
+        "total_label":          "Total :",
+        "inicio_label":         "Début :",
+        "divida_encerrada":     "Dette Réglée",
+        "ultima_parcela":       "Dernier versement :",
+        "falta_pagar":          "Reste à payer :",
+        "recorrente_inf":       "Récurrent ∞",
+        "x_restantes":          "restants",
+        "btn_pagar":            "💸 Payer le Versement",
+        "btn_quitar":           "🏁 Tout Régler",
+        "btn_excluir":          "🗑️ Supprimer",
+        "salario_titulo":       "💰 Mon Salaire Mensuel",
+        "salario_input":        "Salaire Mensuel Net (R$)",
+        "salario_salvo":        "✅ Salaire mis à jour !",
+        "salario_zero_aviso":   "⚠️ Enregistrez votre salaire dans la barre latérale pour voir le % engagé.",
+        "pct_label":            "% du salaire engagé le mois prochain",
+        "simulacao_titulo":     "### 🧮 Simulateur de Dépense",
+        "simulacao_desc":       "Simulez combien vous engageriez en ajoutant une nouvelle dépense.",
+        "sim_valor":            "Montant de la dépense simulée (R$)",
+        "sim_parcelas":         "En combien de versements ?",
+        "sim_resultado":        "Avec cette dépense, vous engageriez **R$ {:.2f}/mois** ({:.1f}% du salaire).",
+        "sim_ok":               "✅ Dans la limite saine (moins de 70% du salaire).",
+        "sim_alerta":           (
+            "ÊTES-VOUS SÛR DE VOULOIR FAIRE CETTE DÉPENSE ? {:.1f}% DE VOTRE SALAIRE SERA ENGAGÉ ; "
+            "IL VAUT MIEUX NE PAS FAIRE CETTE DÉPENSE, CAR ELLE DÉPASSE CE QUE VOUS POUVEZ PAYER POUR LE MOIS PROCHAIN"
+        ),
+        "feedback_titulo":      "### 💬 Canal de Suggestions & Retours",
+        "feedback_sub":         "Votre avis façonne les prochaines mises à jour de notre plateforme !",
+        "feedback_label":       "Votre message",
+        "feedback_placeholder": "Ex : Ce serait super d'avoir un graphique en secteurs... Ou : J'ai trouvé un bug visuel sur le bouton X...",
+        "feedback_btn":         "📨 Envoyer Mon Retour",
+        "feedback_vazio":       "⚠️ Veuillez écrire quelque chose avant d'envoyer.",
+        "feedback_curto":       "⚠️ Veuillez développer un peu plus votre message.",
+        "feedback_ok":          "✅ Retour envoyé avec succès ! Merci beaucoup 🙏",
+        "rodape":               "© 2026 Gastei App. Tous droits réservés. Support : finatechsuporte@gmail.com",
+    },
+}
+
+# ─────────────────────────────────────────────
 #  CSS GLOBAL
 # ─────────────────────────────────────────────
 st.markdown("""
@@ -86,6 +354,42 @@ h2, h3 { font-family: 'Sora', sans-serif !important; color: #c9d1f0 !important; 
 }
 .parcela-label { font-size:13px; font-weight:600; letter-spacing:2px; text-transform:uppercase; color:rgba(100,181,246,0.75); margin-bottom:6px; }
 .parcela-value { font-family:'JetBrains Mono',monospace; font-size:34px; font-weight:700; color:#64b5f6; }
+
+/* CARD SALÁRIO % */
+.salario-card {
+    background: linear-gradient(135deg, #1a2e1e 0%, #0d2118 100%);
+    border: 1px solid rgba(52,211,153,0.25); border-radius: 20px;
+    padding: 24px 32px; margin-bottom: 32px;
+    display: flex; align-items: center; justify-content: space-between;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+}
+.salario-card.alerta {
+    background: linear-gradient(135deg, #2e1a1a 0%, #210d0d 100%);
+    border-color: rgba(239,68,68,0.35);
+}
+.salario-label { font-size:13px; font-weight:600; letter-spacing:2px; text-transform:uppercase; color:rgba(52,211,153,0.75); margin-bottom:6px; }
+.salario-card.alerta .salario-label { color:rgba(239,68,68,0.75); }
+.salario-value { font-family:'JetBrains Mono',monospace; font-size:34px; font-weight:700; color:#34d399; }
+.salario-card.alerta .salario-value { color:#ef4444; }
+
+/* ALERTA SIMULAÇÃO PISCANTE */
+@keyframes pulse-alerta {
+    0%,100% { box-shadow: 0 0 0 1px rgba(239,68,68,0.5), 0 0 20px rgba(239,68,68,0.2); opacity:1; }
+    50%      { box-shadow: 0 0 0 2px rgba(239,68,68,0.8), 0 0 40px rgba(239,68,68,0.4); opacity:0.88; }
+}
+.alerta-simulacao {
+    background: linear-gradient(135deg, rgba(239,68,68,0.15), rgba(251,146,60,0.1));
+    border: 2px solid rgba(239,68,68,0.6);
+    border-radius: 14px; padding: 18px 22px;
+    font-size: 13px; font-weight: 700; color: #fca5a5;
+    letter-spacing: 0.03em; line-height: 1.6;
+    animation: pulse-alerta 1.8s ease-in-out infinite;
+    margin-top: 12px;
+}
+.alerta-simulacao .pct-destaque {
+    font-size: 22px; font-weight: 800; color: #ef4444;
+    display: block; margin-bottom: 6px; font-family: 'JetBrains Mono', monospace;
+}
 
 /* FORMULÁRIO */
 .form-section {
@@ -226,7 +530,7 @@ hr { border-color:rgba(255,255,255,0.07) !important; margin:28px 0 !important; }
 """, unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────
-#  CONNECTION POOL — elimina latência de reconexão
+#  CONNECTION POOL
 # ─────────────────────────────────────────────
 @st.cache_resource
 def get_pool():
@@ -250,7 +554,6 @@ def run_query(sql: str, params=None, fetch=False):
                 return rows
             conn.commit()
     except psycopg2.OperationalError:
-        # reconecta automaticamente via pool
         try: pool.putconn(conn, close=True)
         except: pass
         conn = pool.getconn()
@@ -270,7 +573,7 @@ def run_query(sql: str, params=None, fetch=False):
         except: pass
 
 # ─────────────────────────────────────────────
-#  INIT DB — O MURO DO MÉXICO CONSTRUÍDO
+#  INIT DB
 # ─────────────────────────────────────────────
 def init_db():
     run_query("""
@@ -281,13 +584,12 @@ def init_db():
             senha TEXT NOT NULL
         )
     """)
-    # TABELA PAYWALL: Quem comprou e até quando pode usar
     run_query("""
         CREATE TABLE IF NOT EXISTS licencas_ativas (
             id             SERIAL PRIMARY KEY,
             email          TEXT NOT NULL UNIQUE,
-            tipo_licenca   TEXT NOT NULL, -- 'assinatura' ou 'vitalicio'
-            expira_em      DATE,          -- NULL se for vitalício
+            tipo_licenca   TEXT NOT NULL,
+            expira_em      DATE,
             criado_em      TIMESTAMP NOT NULL DEFAULT NOW()
         )
     """)
@@ -313,8 +615,6 @@ def init_db():
             criado_em  TIMESTAMP NOT NULL DEFAULT NOW()
         )
     """)
-    
-    # Tabela de tokens de redefinição de senha
     run_query("""
         CREATE TABLE IF NOT EXISTS reset_tokens (
             id         SERIAL PRIMARY KEY,
@@ -324,8 +624,6 @@ def init_db():
             usado      BOOLEAN NOT NULL DEFAULT FALSE
         )
     """)
-
-    # Migrações de colunas — lancamentos
     for col, definition in [
         ("recorrente",     "SMALLINT NOT NULL DEFAULT 0"),
         ("usuario_id",     "INTEGER NOT NULL DEFAULT 0"),
@@ -341,8 +639,6 @@ def init_db():
                 END IF;
             END$$
         """)
-
-    # Migração: telefone na tabela usuarios
     run_query("""
         DO $$ BEGIN
             IF NOT EXISTS (
@@ -354,20 +650,17 @@ def init_db():
     """)
 
 # ─────────────────────────────────────────────
-#  VALIDADOR DO PAYWALL (O CHEQUE DO MURO)
+#  PAYWALL
 # ─────────────────────────────────────────────
 @st.cache_data(ttl=300, show_spinner=False)
 def verificar_status_licenca(email: str) -> tuple:
-    """Retorna (permitido: bool, motivo: str) — cache de 5 min."""
     try:
         rows = run_query("SELECT * FROM licencas_ativas WHERE email = %s", (email.strip().lower(),), fetch=True)
         if not rows:
             return False, "não_autorizado"
-        
         licenca = rows[0]
         if licenca["tipo_licenca"] == "vitalicio":
             return True, "vitalicio"
-            
         if licenca["tipo_licenca"] == "assinatura":
             if licenca["expira_em"] is None:
                 return True, "assinatura_valida"
@@ -375,7 +668,6 @@ def verificar_status_licenca(email: str) -> tuple:
                 return True, "assinatura_valida"
             else:
                 return False, "assinatura_expirada"
-                
         return False, "invalido"
     except Exception:
         return False, "erro"
@@ -387,11 +679,9 @@ def hash_senha(s: str) -> str:
     return hashlib.sha256(s.encode()).hexdigest()
 
 def _token_secret() -> str:
-    """Chave HMAC lida dos Secrets do Streamlit. Nunca viaja na URL."""
     return st.secrets.get("token_secret", "dev-fallback-inseguro-troque-nos-secrets")
 
 def gerar_token_sessao(usuario_id: int) -> str:
-    """Gera '{id}.{hmac}' — o ID não pode ser forjado sem conhecer token_secret."""
     payload = str(usuario_id)
     sig = hmac.new(
         _token_secret().encode("utf-8"),
@@ -401,7 +691,6 @@ def gerar_token_sessao(usuario_id: int) -> str:
     return f"{payload}.{sig}"
 
 def validar_token_sessao(token: str):
-    """Retorna usuario_id (int) se token legítimo, None se inválido ou forjado."""
     try:
         payload, sig_recebida = token.rsplit(".", 1)
         sig_esperada = hmac.new(
@@ -424,16 +713,18 @@ def to_date(val):
     if hasattr(val, "date"): return val.date()
     return date.fromisoformat(str(val))
 
+def telefone_valido(tel: str) -> bool:
+    digits = re.sub(r'\D', '', tel)
+    return 10 <= len(digits) <= 13
+
 # ── Reset de Senha ──────────────────────────────
 def gerar_token_reset(email: str) -> str | None:
-    """Cria token de 6 dígitos, salva no banco e retorna o token."""
     try:
-        # Invalida tokens anteriores não usados para o mesmo e-mail
         run_query(
             "UPDATE reset_tokens SET usado=TRUE WHERE email=%s AND usado=FALSE",
             (email.strip().lower(),)
         )
-        token = str(_secrets.randbelow(900000) + 100000)  # 100000–999999
+        token = str(_secrets.randbelow(900000) + 100000)
         run_query(
             "INSERT INTO reset_tokens (email, token) VALUES (%s, %s)",
             (email.strip().lower(), token)
@@ -444,7 +735,6 @@ def gerar_token_reset(email: str) -> str | None:
         return None
 
 def validar_token_reset(email: str, token: str) -> bool:
-    """Verifica se o token é válido (emitido nos últimos 15 min e não usado)."""
     try:
         rows = run_query(
             """SELECT id FROM reset_tokens
@@ -458,7 +748,6 @@ def validar_token_reset(email: str, token: str) -> bool:
         return False
 
 def consumir_token_reset(email: str, token: str) -> bool:
-    """Marca o token como usado após a troca de senha."""
     try:
         run_query(
             "UPDATE reset_tokens SET usado=TRUE WHERE email=%s AND token=%s",
@@ -480,14 +769,12 @@ def trocar_senha(email: str, nova_senha: str) -> bool:
         return False
 
 def enviar_email_reset(destinatario: str, token: str) -> bool:
-    """Envia o token de redefinição via SMTP. Credenciais em st.secrets['email']."""
     try:
         cfg = st.secrets["email"]
         msg = MIMEMultipart("alternative")
         msg["Subject"] = "🔐 Gastei — Código de Redefinição de Senha"
         msg["From"]    = cfg["remetente"]
         msg["To"]      = destinatario
-
         html = f"""
         <div style="font-family:Sora,sans-serif; max-width:480px; margin:auto;
                     background:#1a1a2e; border-radius:16px; padding:40px; color:#e8e4ff;">
@@ -512,20 +799,15 @@ def enviar_email_reset(destinatario: str, token: str) -> bool:
         </div>
         """
         msg.attach(MIMEText(html, "html"))
-
         porta = int(cfg.get("smtp_port", 587))
         if porta == 465:
-            # SSL direto (alguns provedores)
             ctx = __import__('ssl').create_default_context()
             with smtplib.SMTP_SSL(cfg["smtp_host"], porta, context=ctx) as srv:
                 srv.login(cfg["remetente"], cfg["senha_smtp"])
                 srv.sendmail(cfg["remetente"], destinatario, msg.as_string())
         else:
-            # STARTTLS — padrão Titan / porta 587
             with smtplib.SMTP(cfg["smtp_host"], porta, timeout=10) as srv:
-                srv.ehlo()
-                srv.starttls()
-                srv.ehlo()
+                srv.ehlo(); srv.starttls(); srv.ehlo()
                 srv.login(cfg["remetente"], cfg["senha_smtp"])
                 srv.sendmail(cfg["remetente"], destinatario, msg.as_string())
         return True
@@ -533,13 +815,8 @@ def enviar_email_reset(destinatario: str, token: str) -> bool:
         st.error(f"❌ Falha ao enviar e-mail: {e}")
         return False
 
-def telefone_valido(tel: str) -> bool:
-    digits = re.sub(r'\D', '', tel)
-    return 10 <= len(digits) <= 13
-
 # ── Usuários ──────────────────────────────────
 def criar_usuario(nome, email, senha, telefone=""):
-    # O MURO NO CADASTRO: Só cria se comprou!
     permitido, motivo = verificar_status_licenca(email)
     if not permitido:
         if motivo == "não_autorizado":
@@ -547,7 +824,6 @@ def criar_usuario(nome, email, senha, telefone=""):
         elif motivo == "assinatura_expirada":
             return False, "Sua assinatura expirou! Por favor, realize a renovação para reativar seu cadastro."
         return False, "Licença de acesso inválida."
-
     try:
         run_query(
             "INSERT INTO usuarios (nome, email, senha, telefone) VALUES (%s, %s, %s, %s)",
@@ -555,21 +831,17 @@ def criar_usuario(nome, email, senha, telefone=""):
         )
         return True, "ok"
     except psycopg2.errors.UniqueViolation:
-        try: get_conn().rollback()
+        try: get_pool().getconn().rollback()
         except: pass
         return False, "Este e-mail já está cadastrado."
     except Exception as e:
-        try: get_conn().rollback()
-        except: pass
         return False, f"Erro ao criar conta: {e}"
 
 def autenticar_usuario(email, sender_senha):
     try:
-        # O MURO NO LOGIN: Mesmo que tenha conta, se a assinatura venceu, barra!
         permitido, _ = verificar_status_licenca(email)
         if not permitido:
             return "bloqueado"
-
         rows = run_query(
             "SELECT id, nome FROM usuarios WHERE email=%s AND senha=%s",
             (email.strip().lower(), hash_senha(sender_senha)), fetch=True
@@ -594,7 +866,6 @@ def inserir_lancamento(uid, descricao, valor_total, parcelas_totais, inicio, fin
 
 @st.cache_data(ttl=30, show_spinner=False)
 def carregar_lancamentos(uid) -> pd.DataFrame:
-    """Cache de 30s — evita query ao banco em cada rerun de UI."""
     try:
         rows = run_query(
             "SELECT * FROM lancamentos WHERE usuario_id=%s", (uid,), fetch=True
@@ -610,7 +881,6 @@ def carregar_lancamentos(uid) -> pd.DataFrame:
         return pd.DataFrame()
 
 def invalidar_cache_lancamentos():
-    """Chama após qualquer write para forçar refresh imediato."""
     carregar_lancamentos.clear()
 
 def excluir_lancamento(id_):
@@ -648,7 +918,6 @@ def avancar_parcela_recorrente(id_, inicio_pagamento):
 def avancar_parcela_parcelada_excel(id_, inicio_pagamento, parcelas_totais, parcelas_pagas_atual):
     try:
         proxima_paga = parcelas_pagas_atual + 1
-        
         if proxima_paga >= parcelas_totais:
             run_query("UPDATE lancamentos SET parcelas_pagas=%s, pago=TRUE WHERE id=%s", (parcelas_totais, id_))
         else:
@@ -660,7 +929,6 @@ def avancar_parcela_parcelada_excel(id_, inicio_pagamento, parcelas_totais, parc
                 novo_inicio = date(ano, mes, dia)
             except ValueError:
                 novo_inicio = date(ano, mes, calendar.monthrange(ano, mes)[1])
-                
             run_query(
                 "UPDATE lancamentos SET inicio_pagamento=%s, parcelas_pagas=%s WHERE id=%s",
                 (novo_inicio, proxima_paga, id_)
@@ -713,27 +981,15 @@ def calcular_gasto_mensal(df: pd.DataFrame) -> float:
     parcela_vals = parcelados["valor_total"] / parcelados["parcelas_totais"].replace(0, 1)
     return float(recorrentes + parcela_vals.sum())
 
-def get_sort_key(row) -> tuple:
-    hoje = date.today()
-    if row.get("pago", False):
-        return (2, date(9999, 12, 31))
-    
-    eh_fixa = int(row.get("recorrente", 0)) == 1
-    if eh_fixa:
-        proxima = calcular_proxima_recorrente(to_date(row["inicio_pagamento"]))
-    else:
-        proxima = to_date(row["inicio_pagamento"])
-        
-    if proxima <= hoje:
-        return (0, proxima)
-    return (1, proxima)
+def calcular_gasto_proximo_mes(df: pd.DataFrame) -> float:
+    """Soma do que será devido no próximo mês (recorrentes + parcelas ativas)."""
+    return calcular_gasto_mensal(df)
 
 # ─────────────────────────────────────────────
 #  INIT EXECUTION
 # ─────────────────────────────────────────────
 @st.cache_resource
 def init_db_once():
-    """Garante que o init_db rode só uma vez por processo do servidor."""
     init_db()
 
 try:
@@ -747,6 +1003,8 @@ except Exception as e:
 # ─────────────────────────────────────────────
 if "usuario_id"   not in st.session_state: st.session_state.usuario_id   = None
 if "usuario_nome" not in st.session_state: st.session_state.usuario_nome = None
+if "lang"         not in st.session_state: st.session_state.lang         = "PT"
+if "salario"      not in st.session_state: st.session_state.salario      = 0.0
 
 if st.session_state.usuario_id is None:
     token_param = st.query_params.get("s", None)
@@ -759,11 +1017,11 @@ if st.session_state.usuario_id is None:
                     st.session_state.usuario_id   = rows[0]["id"]
                     st.session_state.usuario_nome = rows[0]["nome"]
                 else:
-                    st.query_params.clear()   # token órfão — limpa
+                    st.query_params.clear()
             except Exception:
                 pass
         else:
-            st.query_params.clear()           # token adulterado/forjado — encerra
+            st.query_params.clear()
 
 # ═════════════════════════════════════════════
 #  TELA DE LOGIN / CADASTRO
@@ -782,12 +1040,10 @@ if st.session_state.usuario_id is None:
         aba_login, aba_cadastro = st.tabs(["🔑  Entrar", "✨  Criar Conta"])
 
         with aba_login:
-            # ── estado do fluxo de reset ────────────────────────
             if "reset_step"  not in st.session_state: st.session_state.reset_step  = 0
             if "reset_email" not in st.session_state: st.session_state.reset_email = ""
 
             if st.session_state.reset_step == 0:
-                # ── tela normal de login ─────────────────────────
                 st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
                 email_login = st.text_input("E-mail", key="login_email", placeholder="seu@email.com")
                 senha_login = st.text_input("Senha", type="password", key="login_senha", placeholder="••••••••")
@@ -809,17 +1065,13 @@ if st.session_state.usuario_id is None:
                             st.error("E-mail ou senha incorretos.")
 
                 st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
-
-                # ── link "Esqueci minha senha" ───────────────────
                 st.markdown('<div class="btn-link">', unsafe_allow_html=True)
                 if st.button("🔑 Esqueci minha senha", key="btn_forgot"):
                     st.session_state.reset_step = 1
                     st.rerun()
                 st.markdown('</div>', unsafe_allow_html=True)
-
                 st.markdown("<div style='height:2px'></div>", unsafe_allow_html=True)
 
-                # ── suporte e link para página de vendas ─────────
                 numero_suporte = "5567991158892"
                 msg_wa = "Olá! Quero verificar o status do meu acesso no app Gastei."
                 link_wa = f"https://wa.me/{numero_suporte}?text={msg_wa.replace(' ', '%20')}"
@@ -843,18 +1095,15 @@ if st.session_state.usuario_id is None:
                     st.write("Seus dados financeiros são armazenados de forma criptografada e privativa na nossa infraestrutura do Supabase. Não compartilhamos e nem realizamos leitura de suas informações para qualquer outra finalidade que não seja o seu controle estrito.")
 
             elif st.session_state.reset_step == 1:
-                # ── passo 1: informar o e-mail ────────────────────
                 st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
                 st.info("📧 Informe o e-mail cadastrado. Enviaremos um código de 6 dígitos.")
                 email_reset = st.text_input("E-mail cadastrado", key="reset_email_input", placeholder="seu@email.com")
-
                 col_enviar, col_voltar = st.columns([1, 1])
                 with col_enviar:
                     if st.button("Enviar código →", key="btn_send_token"):
                         if not email_valido(email_reset):
                             st.error("E-mail inválido.")
                         else:
-                            # Verifica se o e-mail existe na base
                             rows = run_query(
                                 "SELECT id FROM usuarios WHERE email=%s",
                                 (email_reset.strip().lower(),), fetch=True
@@ -873,13 +1122,11 @@ if st.session_state.usuario_id is None:
                         st.rerun()
 
             elif st.session_state.reset_step == 2:
-                # ── passo 2: inserir código + nova senha ──────────
                 st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
                 st.success(f"✅ Código enviado para **{st.session_state.reset_email}**. Verifique sua caixa de entrada (e o spam).")
                 codigo = st.text_input("Código de 6 dígitos", key="reset_token_input", placeholder="123456", max_chars=6)
                 nova1  = st.text_input("Nova senha", type="password", key="reset_pass1", placeholder="Mínimo 6 caracteres")
                 nova2  = st.text_input("Confirmar nova senha", type="password", key="reset_pass2", placeholder="Repita a senha")
-
                 col_confirmar, col_voltar2 = st.columns([1, 1])
                 with col_confirmar:
                     if st.button("Redefinir senha →", key="btn_confirm_reset"):
@@ -905,10 +1152,10 @@ if st.session_state.usuario_id is None:
 
         with aba_cadastro:
             st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
-            nome_cad   = st.text_input("Seu nome",        key="cad_nome",   placeholder="João Silva")
-            email_cad  = st.text_input("E-mail",          key="cad_email",  placeholder="O mesmo e-mail usado na compra")
-            tel_cad    = st.text_input("WhatsApp / Telefone", key="cad_tel", placeholder="(67) 99999-9999")
-            senha_cad  = st.text_input("Senha", type="password", key="cad_senha",  placeholder="Mínimo 6 caracteres")
+            nome_cad   = st.text_input("Seu nome",            key="cad_nome",   placeholder="João Silva")
+            email_cad  = st.text_input("E-mail",              key="cad_email",  placeholder="O mesmo e-mail usado na compra")
+            tel_cad    = st.text_input("WhatsApp / Telefone", key="cad_tel",    placeholder="(67) 99999-9999")
+            senha_cad  = st.text_input("Senha",  type="password", key="cad_senha",  placeholder="Mínimo 6 caracteres")
             senha_cad2 = st.text_input("Confirmar senha", type="password", key="cad_senha2", placeholder="Repita a senha")
             st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
@@ -931,7 +1178,6 @@ if st.session_state.usuario_id is None:
                     if ok: st.success("✅ Conta autorizada e criada! Faça login na aba ao lado.")
                     else:  st.error(msg)
 
-            # ── link discreto para página de vendas ──────────────
             st.markdown("""
             <div style='text-align:center; margin-top:16px;'>
                 <a href="https://finatechlab.com/pagina-vendas-gastei/" target="_blank"
@@ -948,23 +1194,52 @@ if st.session_state.usuario_id is None:
 uid = st.session_state.usuario_id
 st.query_params["s"] = gerar_token_sessao(uid)
 
+# ── Sidebar: idioma + salário ──────────────────
+with st.sidebar:
+    st.markdown("### ⚙️ Preferências")
+    idioma_opcoes = {"Português": "PT", "English": "EN", "Français": "FR"}
+    idioma_sel = st.selectbox(
+        "🌐 Idioma / Language / Langue",
+        options=list(idioma_opcoes.keys()),
+        index=list(idioma_opcoes.values()).index(st.session_state.lang),
+        key="sel_idioma"
+    )
+    st.session_state.lang = idioma_opcoes[idioma_sel]
+    t = IDIOMAS[st.session_state.lang]   # atalho global
+
+    st.markdown("---")
+    st.markdown(f"### {t['salario_titulo']}")
+    novo_salario = st.number_input(
+        t["salario_input"],
+        min_value=0.0, step=100.0, format="%.2f",
+        value=float(st.session_state.salario),
+        key="input_salario"
+    )
+    if st.button("💾 Salvar", key="btn_salvar_salario"):
+        st.session_state.salario = novo_salario
+        st.success(t["salario_salvo"])
+
+# garante que t exista caso o sidebar não tenha sido renderizado ainda
+t = IDIOMAS[st.session_state.lang]
+
+# ── Header ────────────────────────────────────
 col_titulo, col_usuario, col_logout = st.columns([5, 2, 1])
 with col_titulo:
     st.markdown("# GASTEI ⚡")
-    st.markdown("<p style='color:#6b7280; margin-top:-12px; margin-bottom:28px;'>Finanças Pessoais Premium Inteligentes</p>", unsafe_allow_html=True)
+    st.markdown(f"<p style='color:#6b7280; margin-top:-12px; margin-bottom:28px;'>{t['app_subtitle']}</p>", unsafe_allow_html=True)
 with col_usuario:
-    st.markdown(f"<div style='text-align:right; padding-top:18px; font-size:13px; color:#9ca3af;'>Olá, <strong style='color:#c4b5fd'>{st.session_state.usuario_nome}</strong> 👋</div>", unsafe_allow_html=True)
+    st.markdown(f"<div style='text-align:right; padding-top:18px; font-size:13px; color:#9ca3af;'>{t['ola']}, <strong style='color:#c4b5fd'>{st.session_state.usuario_nome}</strong> 👋</div>", unsafe_allow_html=True)
 with col_logout:
     st.markdown("<div style='padding-top:14px'></div>", unsafe_allow_html=True)
     st.markdown('<div class="logout-btn">', unsafe_allow_html=True)
-    if st.button("Sair 🚪", key="btn_logout"):
+    if st.button(t["sair"], key="btn_logout"):
         st.session_state.usuario_id   = None
         st.session_state.usuario_nome = None
         st.query_params.clear()
         st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
 
-aba_principal, aba_feedback = st.tabs(["📊 Meus Gastos", "💬 Feedbacks & Sugestões"])
+aba_principal, aba_feedback = st.tabs([t["aba_gastos"], t["aba_feedback"]])
 
 # ══════════════════════════════
 # ABA 1 — GASTOS
@@ -973,90 +1248,149 @@ with aba_principal:
     df_all = carregar_lancamentos(uid)
     total_saidas = df_all["valor_total"].astype(float).sum() if not df_all.empty else 0.0
     gasto_mensal = calcular_gasto_mensal(df_all) if not df_all.empty else 0.0
-    
-    col_a, col_b = st.columns(2)
+    salario      = float(st.session_state.salario)
+
+    # ── Cards de resumo (3 colunas) ────────────
+    col_a, col_b, col_c = st.columns(3)
     with col_a:
         st.markdown(f"""
         <div class="total-card">
             <div>
-                <div class="total-label">Total de Saídas Contratadas</div>
+                <div class="total-label">{t['total_saidas']}</div>
                 <div class="total-value">R$ {total_saidas:,.2f}</div>
             </div>
             <div class="total-icon">📊</div>
         </div>""", unsafe_allow_html=True)
+
     with col_b:
         st.markdown(f"""
         <div class="parcela-card">
             <div>
-                <div class="parcela-label">Comprometido Este Mês</div>
+                <div class="parcela-label">{t['comprometido_mes']}</div>
                 <div class="parcela-value">R$ {gasto_mensal:,.2f}</div>
             </div>
             <div style="font-size:48px;opacity:0.4;">📅</div>
         </div>""", unsafe_allow_html=True)
 
-    st.markdown("### ➕ Novo Lançamento")
+    with col_c:
+        if salario > 0:
+            pct = (gasto_mensal / salario) * 100
+            card_class = "salario-card alerta" if pct >= 70 else "salario-card"
+            icon = "🚨" if pct >= 70 else "💰"
+            st.markdown(f"""
+            <div class="{card_class}">
+                <div>
+                    <div class="salario-label">{t['salario_comprometido']}</div>
+                    <div class="salario-value">{pct:.1f}%</div>
+                    <div style="font-size:11px; color:#6b7280; margin-top:4px;">{t['pct_label']}</div>
+                </div>
+                <div style="font-size:48px;opacity:0.5;">{icon}</div>
+            </div>""", unsafe_allow_html=True)
+        else:
+            st.markdown(f"""
+            <div class="salario-card" style="opacity:0.55;">
+                <div>
+                    <div class="salario-label">{t['salario_comprometido']}</div>
+                    <div class="salario-value">--%</div>
+                </div>
+                <div style="font-size:48px;opacity:0.3;">💰</div>
+            </div>""", unsafe_allow_html=True)
+            st.caption(t["salario_zero_aviso"])
+
+    # ── Formulário de novo lançamento ──────────
+    st.markdown(f"### {t['novo_lancamento']}")
     with st.container():
         st.markdown('<div class="form-section">', unsafe_allow_html=True)
         col1, col2 = st.columns([2, 1])
         with col1:
-            descricao = st.text_input("O que comprou / Pagou", placeholder="Ex: iPhone 16, Aluguel, Internet...")
+            descricao = st.text_input(t["o_que_comprou"], placeholder=t["placeholder_desc"])
         with col2:
-            valor_total = st.number_input("Valor Total (R$)", min_value=0.01, step=0.01, format="%.2f")
-            
-        is_recorrente = st.checkbox("🔁 Conta Fixa / Recorrente (sem data de término — Aluguel, Internet...)")
-        
+            valor_total = st.number_input(t["valor_total"], min_value=0.01, step=0.01, format="%.2f")
+
+        is_recorrente = st.checkbox(t["conta_fixa"])
+
         if is_recorrente:
             col4, _ = st.columns([1, 2])
             with col4:
-                inicio_pagamento = st.date_input("Dia de Vencimento (Data de Início)", value=date.today(), format="DD/MM/YYYY")
+                inicio_pagamento = st.date_input(t["dia_vencimento"], value=date.today(), format="DD/MM/YYYY")
             parcelas_totais = 0
             final_pagamento = None
             if descricao and valor_total > 0:
                 proxima_rec = calcular_proxima_recorrente(inicio_pagamento)
                 st.markdown("<hr>", unsafe_allow_html=True)
                 pc1, pc2, pc3 = st.columns(3)
-                with pc1: st.markdown(f"**Valor mensal:** `R$ {valor_total:,.2f}`")
-                with pc2: st.markdown("**Tipo:** `🔁 Recorrente`")
-                with pc3: st.markdown(f"**Próximo vencimento:** `{proxima_rec.strftime('%d/%m/%Y')}`")
+                with pc1: st.markdown(f"{t['valor_mensal']} `R$ {valor_total:,.2f}`")
+                with pc2: st.markdown(f"{t['tipo_recorrente']} `🔁 Recorrente`")
+                with pc3: st.markdown(f"{t['prox_vencimento']} `{proxima_rec.strftime('%d/%m/%Y')}`")
         else:
             col3, col4 = st.columns(2)
             with col3:
-                parcelas_totais = st.number_input("Número de Parcelas", min_value=1, max_value=360, step=1, value=1)
+                parcelas_totais = st.number_input(t["num_parcelas"], min_value=1, max_value=360, step=1, value=1)
             with col4:
-                inicio_pagamento = st.date_input("Data do Primeiro Vencimento", value=date.today(), format="DD/MM/YYYY")
-            
+                inicio_pagamento = st.date_input(t["data_primeiro_venc"], value=date.today(), format="DD/MM/YYYY")
             final_pagamento = None
             if descricao and valor_total > 0:
                 val_p = calcular_valor_parcela(valor_total, parcelas_totais)
                 st.markdown("<hr>", unsafe_allow_html=True)
                 pc1, pc2, pc3 = st.columns(3)
-                with pc1: st.markdown(f"**Valor por parcela:** `R$ {val_p:.2f}`")
-                with pc2: st.markdown(f"**Parcelas restantes:** `{parcelas_totais}x`")
-                with pc3: st.markdown(f"**Vencimento da Parcela 1:** `{inicio_pagamento.strftime('%d/%m/%Y')}`")
-                
+                with pc1: st.markdown(f"{t['valor_parcela']} `R$ {val_p:.2f}`")
+                with pc2: st.markdown(f"{t['parcelas_restantes']} `{parcelas_totais}x`")
+                with pc3: st.markdown(f"{t['venc_parcela1']} `{inicio_pagamento.strftime('%d/%m/%Y')}`")
+
         col_btn, _ = st.columns([1, 3])
         with col_btn:
-            if st.button("💾 Salvar Lançamento"):
+            if st.button(t["salvar_lancamento"]):
                 erros = []
-                if not descricao.strip(): erros.append("⚠️ Preencha a descrição do gasto.")
-                if valor_total <= 0: erros.append("⚠️ O valor deve ser maior que zero.")
+                if not descricao.strip(): erros.append(t["err_descricao"])
+                if valor_total <= 0:      erros.append(t["err_valor"])
                 if erros:
                     for e in erros: st.error(e)
                 else:
                     inserir_lancamento(uid, descricao.strip(), valor_total, parcelas_totais, inicio_pagamento, final_pagamento, is_recorrente)
-                    st.success(f"✅ **{descricao}** salvo com sucesso!")
+                    st.success(t["salvo_sucesso"].format(descricao))
                     st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
-    st.markdown("### 📋 Histórico de Vencimentos")
+    # ── Simulador de Gasto ─────────────────────
+    st.markdown(t["simulacao_titulo"])
+    with st.container():
+        st.markdown('<div class="form-section">', unsafe_allow_html=True)
+        st.markdown(f"<p style='color:#9ca3af; margin-top:-8px;'>{t['simulacao_desc']}</p>", unsafe_allow_html=True)
+        sim_col1, sim_col2 = st.columns([2, 1])
+        with sim_col1:
+            sim_valor = st.number_input(t["sim_valor"], min_value=0.0, step=10.0, format="%.2f", key="sim_val")
+        with sim_col2:
+            sim_parcelas = st.number_input(t["sim_parcelas"], min_value=1, max_value=360, step=1, value=1, key="sim_parc")
+
+        if sim_valor > 0:
+            sim_mensal = sim_valor / sim_parcelas
+            total_com_sim = gasto_mensal + sim_mensal
+            if salario > 0:
+                pct_sim = (total_com_sim / salario) * 100
+                st.markdown(t["sim_resultado"].format(total_com_sim, pct_sim))
+                if pct_sim > 70:
+                    st.markdown(f"""
+                    <div class="alerta-simulacao">
+                        <span class="pct-destaque">⚠️ {pct_sim:.1f}%</span>
+                        {t["sim_alerta"].format(pct_sim)}
+                    </div>""", unsafe_allow_html=True)
+                else:
+                    st.success(t["sim_ok"])
+            else:
+                st.markdown(t["sim_resultado"].format(total_com_sim, 0.0))
+                st.caption(t["salario_zero_aviso"])
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    # ── Histórico de lançamentos ───────────────
+    st.markdown(t["historico"])
     df = carregar_lancamentos(uid)
     if df.empty:
-        st.markdown("<div style='text-align:center; padding:60px 20px; color:#4b5563;'><div style='font-size:48px;'>📭</div>Nenhum lançamento ainda.</div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='text-align:center; padding:60px 20px; color:#4b5563;'><div style='font-size:48px;'>📭</div>{t['nenhum_lancamento']}</div>", unsafe_allow_html=True)
     else:
-        busca = st.text_input("🔍 Filtrar por descrição", placeholder="Digite para buscar...", key="busca")
+        busca = st.text_input(t["filtrar"], placeholder=t["placeholder_busca"], key="busca")
         if busca.strip():
             df = df[df["descricao"].str.contains(busca.strip(), case=False, na=False)]
-            
+
         hoje = date.today()
         df["_pago"] = df["pago"].astype(bool)
         df["_rec"]  = df["recorrente"].astype(int) == 1
@@ -1066,16 +1400,16 @@ with aba_principal:
             axis=1
         )
         def _grp(row):
-            if row["_pago"]:               return (4, date(9999,12,31))
+            if row["_pago"]:                              return (4, date(9999,12,31))
             v = row["_venc"]
-            if v < hoje:                   return (0, v)          # atrasado — mais antigo primeiro
-            if v == hoje:                  return (1, v)          # vence hoje
-            if v <= hoje + timedelta(days=3): return (2, v)       # vence em até 3 dias
-            return (3, v)                                         # futuro
+            if v < hoje:                                  return (0, v)
+            if v == hoje:                                 return (1, v)
+            if v <= hoje + timedelta(days=3):             return (2, v)
+            return (3, v)
         df["_sort"] = df.apply(_grp, axis=1)
         df = df.sort_values("_sort").drop(columns=["_pago", "_rec", "_venc", "_sort"])
-        
-        # ── banners de alerta ────────────────────────────────────────
+
+        # ── banners de alerta ──────────────────
         df_alerta = carregar_lancamentos(uid)
         if not df_alerta.empty:
             _hoje = date.today()
@@ -1084,57 +1418,57 @@ with aba_principal:
                           if int(r["recorrente"]) == 1 else to_date(r["inicio_pagamento"]),
                 axis=1
             )
-            _ativos = ~df_alerta["pago"].astype(bool)
-            n_atrasadas = int((_ativos & (_venc_col < _hoje)).sum())
-            n_hoje      = int((_ativos & (_venc_col == _hoje)).sum())
-            n_breve     = int((_ativos & (_venc_col > _hoje) & (_venc_col <= _hoje + timedelta(days=3))).sum())
+            _ativos      = ~df_alerta["pago"].astype(bool)
+            n_atrasadas  = int((_ativos & (_venc_col < _hoje)).sum())
+            n_hoje       = int((_ativos & (_venc_col == _hoje)).sum())
+            n_breve      = int((_ativos & (_venc_col > _hoje) & (_venc_col <= _hoje + timedelta(days=3))).sum())
 
             if n_atrasadas:
-                pl = "conta atrasada" if n_atrasadas == 1 else "contas atrasadas"
+                pl = t["conta_atrasada_s"] if n_atrasadas == 1 else t["conta_atrasada_p"]
                 st.markdown(f"""
                 <div class="alerta-banner">
-                    🚨 <span class="count">{n_atrasadas}</span> {pl} — quite agora para não acumular juros!
+                    🚨 <span class="count">{n_atrasadas}</span> {t['alerta_atrasada'].format(n_atrasadas, pl).split('🚨 ')[1]}
                 </div>""", unsafe_allow_html=True)
             if n_hoje:
-                pl = "conta vence hoje" if n_hoje == 1 else "contas vencem hoje"
+                pl = t["conta_hoje_s"] if n_hoje == 1 else t["conta_hoje_p"]
                 st.markdown(f"""
                 <div class="hoje-banner">
-                    🔥 <span style="background:#f97316;color:#fff;border-radius:999px;padding:1px 8px;font-weight:800;">{n_hoje}</span> {pl} — não deixe passar!
+                    🔥 <span style="background:#f97316;color:#fff;border-radius:999px;padding:1px 8px;font-weight:800;">{n_hoje}</span> {pl} — {t['alerta_hoje'].split('🔥 ')[1].split(' — ')[1]}
                 </div>""", unsafe_allow_html=True)
             if n_breve and not n_atrasadas and not n_hoje:
-                pl = "conta vence" if n_breve == 1 else "contas vencem"
+                pl = t["conta_breve_s"] if n_breve == 1 else t["conta_breve_p"]
                 st.markdown(f"""
                 <div style="display:flex;align-items:center;gap:8px;background:rgba(234,179,8,0.09);border:1px solid rgba(234,179,8,0.3);border-radius:10px;padding:7px 14px;font-size:11px;font-weight:700;color:#fde047;margin-bottom:8px;">
-                    ⚡ {n_breve} {pl} nos próximos 3 dias
+                    ⚡ {n_breve} {pl} {t['alerta_breve'].split('⚡ ')[1].split(str(n_breve)+' ')[1] if str(n_breve)+' ' in t['alerta_breve'] else 'nos próximos 3 dias'}
                 </div>""", unsafe_allow_html=True)
 
-        st.markdown("""
+        st.markdown(f"""
         <div style="display:grid; grid-template-columns: 2.2fr 1fr 1fr 1fr 0.8fr; padding:10px 24px; font-size:11px; font-weight:700; color:#6b7280; text-transform:uppercase; letter-spacing:1px;">
-            <div>Descrição</div>
-            <div>Valor</div>
-            <div>Próximo Vencimento</div>
-            <div>Situação</div>
-            <div style="text-align:center">Ações</div>
+            <div>{t['col_descricao']}</div>
+            <div>{t['col_valor']}</div>
+            <div>{t['col_vencimento']}</div>
+            <div>{t['col_situacao']}</div>
+            <div style="text-align:center">{t['col_acoes']}</div>
         </div>
         """, unsafe_allow_html=True)
-        
+
         for _, row in df.iterrows():
-            id_ = row["id"]
-            desc = row["descricao"]
-            v_tot = float(row["valor_total"])
-            parc_tot = int(row["parcelas_totais"])
-            parc_pagas = int(row.get("parcelas_pagas", 0))
+            id_           = row["id"]
+            desc          = row["descricao"]
+            v_tot         = float(row["valor_total"])
+            parc_tot      = int(row["parcelas_totais"])
+            parc_pagas    = int(row.get("parcelas_pagas", 0))
             parc_restantes = max(0, parc_tot - parc_pagas)
-            eh_fixa = int(row["recorrente"]) == 1
-            pago_fim = bool(row["pago"])
-            
+            eh_fixa       = int(row["recorrente"]) == 1
+            pago_fim      = bool(row["pago"])
+
             if eh_fixa:
                 val_exibir = v_tot
-                venc_data = calcular_proxima_recorrente(to_date(row["inicio_pagamento"]))
+                venc_data  = calcular_proxima_recorrente(to_date(row["inicio_pagamento"]))
             else:
                 val_exibir = calcular_valor_parcela(v_tot, parc_tot)
-                venc_data = to_date(row["inicio_pagamento"])
-                
+                venc_data  = to_date(row["inicio_pagamento"])
+
             classe_row = "lancamento-row"
             if pago_fim:
                 classe_row += " pago"
@@ -1146,17 +1480,17 @@ with aba_principal:
                 classe_row += " em-breve"
             elif eh_fixa:
                 classe_row += " fixa"
-                
+
             col_r1, col_r2, col_r3, col_r4, col_r5 = st.columns([2.2, 1, 1, 1, 0.8])
-            
+
             with col_r1:
-                sub_desc = f"Total: R$ {v_tot:,.2f} · Início: {to_date(row['inicio_pagamento']).strftime('%d/%m/%Y')}" if not eh_fixa else "Conta Mensal Fixa"
+                sub_desc = f"{t['total_label']} R$ {v_tot:,.2f} · {t['inicio_label']} {to_date(row['inicio_pagamento']).strftime('%d/%m/%Y')}" if not eh_fixa else t["conta_mensal_fixa"]
                 st.markdown(f"<div style='padding-top:12px'><strong style='color:#fff; font-size:15px;'>{desc}</strong><br><span style='color:#6b7280; font-size:11px;'>{sub_desc}</span></div>", unsafe_allow_html=True)
-                
+
             with col_r2:
-                label_p = "mensal" if eh_fixa else "por parcela"
+                label_p = t["label_mensal"] if eh_fixa else t["label_parcela"]
                 st.markdown(f"<div style='padding-top:12px'><strong style='font-family:JetBrains Mono; color:#9b8dff; font-size:16px;'>R$ {val_exibir:,.2f}</strong><br><span style='color:#6b7280; font-size:11px;'>{label_p}</span></div>", unsafe_allow_html=True)
-                
+
             with col_r3:
                 if pago_fim:
                     st.markdown("<div style='padding-top:18px'><span class='badge-pago'>Concluído ✅</span></div>", unsafe_allow_html=True)
@@ -1170,12 +1504,12 @@ with aba_principal:
                     st.markdown(f"<div style='padding-top:18px'><span class='badge-em-breve'>⚡ {venc_data.strftime('%d/%m/%Y')} ({txt_r})</span></div>", unsafe_allow_html=True)
                 else:
                     st.markdown(f"<div style='padding-top:18px'><span class='badge-vence'>📅 {venc_data.strftime('%d/%m/%Y')}</span></div>", unsafe_allow_html=True)
-                    
+
             with col_r4:
                 if pago_fim:
-                    st.markdown("<div style='padding-top:18px; color:#4b5563; font-size:13px;'>Dívida Encerrada</div>", unsafe_allow_html=True)
+                    st.markdown(f"<div style='padding-top:18px; color:#4b5563; font-size:13px;'>{t['divida_encerrada']}</div>", unsafe_allow_html=True)
                 elif eh_fixa:
-                    st.markdown("<div style='padding-top:18px'><span class='badge-fixa'>Recorrente ∞</span></div>", unsafe_allow_html=True)
+                    st.markdown(f"<div style='padding-top:18px'><span class='badge-fixa'>{t['recorrente_inf']}</span></div>", unsafe_allow_html=True)
                 else:
                     try:
                         meses_para_fim = max(0, parc_restantes - 1)
@@ -1189,69 +1523,65 @@ with aba_principal:
                         txt_ultima = data_ultima_parc.strftime('%d/%m/%Y')
                     except:
                         txt_ultima = "--/--/----"
-
                     falta_pagar = max(0.0, v_tot - (parc_pagas * val_exibir))
                     st.markdown(f"""
                     <div style='padding-top:4px'>
-                        <span class='badge-parcelas'>{parc_restantes}x restantes</span><br>
-                        <span style='color:#6b7280; font-size:11px; display:block; margin-top:2px;'>Última parcela: <strong style='color:#90cdf4;'>{txt_ultima}</strong></span>
-                        <span style='color:#6b7280; font-size:10px; display:block;'>Falta pagar: R$ {falta_pagar:,.2f}</span>
+                        <span class='badge-parcelas'>{parc_restantes}x {t['x_restantes']}</span><br>
+                        <span style='color:#6b7280; font-size:11px; display:block; margin-top:2px;'>{t['ultima_parcela']} <strong style='color:#90cdf4;'>{txt_ultima}</strong></span>
+                        <span style='color:#6b7280; font-size:10px; display:block;'>{t['falta_pagar']} R$ {falta_pagar:,.2f}</span>
                     </div>
                     """, unsafe_allow_html=True)
-                    
+
             with col_r5:
                 st.markdown("<div style='padding-top:6px; display:flex; flex-direction:column; gap:4px;'>", unsafe_allow_html=True)
                 if not pago_fim:
-                    c_pagar = f"btn_p_{id_}"
+                    c_pagar  = f"btn_p_{id_}"
                     c_quitar = f"btn_q_{id_}"
-                    
                     st.markdown('<div class="btn-pagar">', unsafe_allow_html=True)
-                    if st.button("💸 Pagar Parcela", key=c_pagar):
+                    if st.button(t["btn_pagar"], key=c_pagar):
                         if eh_fixa:
                             avancar_parcela_recorrente(id_, row["inicio_pagamento"])
                         else:
                             avancar_parcela_parcelada_excel(id_, row["inicio_pagamento"], parc_tot, parc_pagas)
                         st.rerun()
                     st.markdown('</div>', unsafe_allow_html=True)
-                    
                     st.markdown('<div class="btn-quitar">', unsafe_allow_html=True)
-                    if st.button("🏁 Quitar Tudo", key=c_quitar):
+                    if st.button(t["btn_quitar"], key=c_quitar):
                         marcar_pago(id_)
                         st.rerun()
                     st.markdown('</div>', unsafe_allow_html=True)
                 else:
-                    if st.button("🗑️ Excluir", key=f"btn_del_{id_}"):
+                    if st.button(t["btn_excluir"], key=f"btn_del_{id_}"):
                         excluir_lancamento(id_)
                         st.rerun()
                 st.markdown("</div>", unsafe_allow_html=True)
-                
-        st.markdown("<br><br><center style='color:#4b5563; font-size:12px;'>© 2026 Gastei App. Todos os direitos reservados. Suporte: finatechsuporte@gmail.com</center>", unsafe_allow_html=True)
+
+        st.markdown(f"<br><br><center style='color:#4b5563; font-size:12px;'>{t['rodape']}</center>", unsafe_allow_html=True)
 
 # ══════════════════════════════
 # ABA 2 — FEEDBACK
 # ══════════════════════════════
 with aba_feedback:
-    st.markdown("### 💬 Canal Direct de Sugestões & Feedbacks")
-    st.markdown("<p style='color:#9ca3af; margin-top:-10px;'>Sua opinião molda as próximas atualizações da nossa plataforma!</p>", unsafe_allow_html=True)
-    
+    st.markdown(t["feedback_titulo"])
+    st.markdown(f"<p style='color:#9ca3af; margin-top:-10px;'>{t['feedback_sub']}</p>", unsafe_allow_html=True)
+
     with st.container():
         st.markdown('<div class="form-section">', unsafe_allow_html=True)
         mensagem_fb = st.text_area(
-            "Sua mensagem",
-            placeholder="Ex: Seria massa ver um gráfico de pizza no topo... Ou: Encontrei um bug visual no botão X...",
+            t["feedback_label"],
+            placeholder=t["feedback_placeholder"],
             height=160,
             key="feedback_texto"
         )
-        
         col_fb, _ = st.columns([1, 3])
         with col_fb:
-            if st.button("📨 Enviar Meu Feedback", key="btn_feedback"):
+            if st.button(t["feedback_btn"], key="btn_feedback"):
                 if not mensagem_fb.strip():
-                    st.error("⚠️ Escreva algo antes de clicar em enviar.")
+                    st.error(t["feedback_vazio"])
                 elif len(mensagem_fb.strip()) < 8:
-                    st.error("⚠️ Detalhe um pouquinho mais a sua mensagem.")
+                    st.error(t["feedback_curto"])
                 else:
                     if inserir_feedback(uid, mensagem_fb):
-                        st.success("✅ Feedback enviado com absoluto sucesso! Muito obrigado 🙏")
+                        st.success(t["feedback_ok"])
                         st.balloons()
         st.markdown('</div>', unsafe_allow_html=True)
