@@ -53,7 +53,6 @@ for _k, _v in _SS_DEFAULTS.items():
 # ─────────────────────────────────────────────
 _LANG_OPTIONS  = {"Português": "PT", "English": "EN", "Français": "FR"}
 _LANG_LABELS   = list(_LANG_OPTIONS.keys())
-st.rerun()
 _LANG_CODES    = list(_LANG_OPTIONS.values())
 
 # Garante que lang seja sempre um código válido
