@@ -880,7 +880,8 @@ def enviar_email_reset(destinatario, token):
 def criar_usuario(nome, email, senha, telefone=""):
     ok, motivo = verificar_status_licenca(email)
     if not ok:
-        msgs = t.get('email_sem_licença', "Email sem licença Ativa")
+        msgs = {"não_autorizado": "Acesso Negado! Este e-mail não possui licença ativa.",
+                "assinatura_expirada": "Assinatura expirada! Renove para reativar."}
         return False, msgs.get(motivo, "Licença inválida.")
     try:
         run_query("INSERT INTO usuarios (nome,email,senha,telefone) VALUES (%s,%s,%s,%s)",
