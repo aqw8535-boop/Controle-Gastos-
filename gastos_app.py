@@ -1194,20 +1194,20 @@ with st.sidebar:
     st.markdown(f"### {t['idioma_label']}")
     _smap = {"Português": "PT", "English": "EN", "Français": "FR"}
     _ssel = st.selectbox(
-       # Descubra o índice atual para o rádio começar na marcação certa
-_indice_atual = 0
+      # Descobre dinamicamente em qual posição o seletor visual deve começar marcado
+_indice_padrao = 0
 if st.session_state.lang == "EN":
-    _indice_atual = 1
+    _indice_padrao = 1
 elif st.session_state.lang == "FR":
-    _indice_atual = 2
+    _indice_padrao = 2
 
-# O SEU WIDGET DEVE FICAR ASSIM:
+# O rádio/selectbox da interface de login deve estar configurado exatamente assim:
 st.radio(
     label="🌐 Idioma / Language", 
     options=["🇧🇷 Português", "🇺🇸 English", "🇫🇷 Français"],
-    index=_indice_atual,
-    key="seletor_idioma",
-    on_change=mudar_idioma_callback  # <--- ESSA É A MÁGICA!
+    index=_indice_padrao,
+    key="seletor_idioma"
+)
 )
     )
     _novo_lang = _smap[_ssel]
