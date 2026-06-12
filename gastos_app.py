@@ -347,6 +347,8 @@ IDIOMAS = {
         "sucesso_conta_criada": "✅ Account created! Login in the next tab.",
     },
     "FR": {
+        "não_autorizado": "Accès refusé ! Ce courriel ne possède pas de licence active.",
+        "assinatura_expirada": "Abonnement expiré ! Renouvelez-le pour le réactiver.",
         "cad_senha2": "Répéter le mot de passe",    
         "email_cad": "La même adresse e-mail que celle utilisée pour l'achat.",
         "link_esqueceu": "🔑 j'ai oublié mon mot de passe",
