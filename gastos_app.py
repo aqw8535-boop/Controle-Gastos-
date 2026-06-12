@@ -222,6 +222,7 @@ IDIOMAS = {
         
     },
     "EN": {
+        "holder_email": "my@email.com",
         "input_senha": "Password",
         "input_nova_senha": "New Password",
         "input_confirmar_nova": "Confirm New Password",
@@ -1064,7 +1065,7 @@ if st.session_state.usuario_id is None:
         with aba_login:
             if st.session_state.reset_step == 0:
                 st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
-                email_login = st.text_input(t.get('input_email', "E-mail"), key="login_email", placeholder="seu@email.com")
+                email_login = st.text_input(t.get('input_email', "E-mail"), key="login_email", placeholder=t.get('holder_email',"seu@email.com")
                 senha_login = st.text_input(t.get('input_senha', "Senha"), type="password", key="login_senha", placeholder="••••••••")
                 st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
                 
