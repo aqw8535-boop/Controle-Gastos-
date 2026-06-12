@@ -526,6 +526,41 @@ hr { border-color:rgba(255,255,255,0.07) !important; margin:28px 0 !important; }
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: rgba(155,141,255,0.4); border-radius: 3px; }
+
+/* BOTÃO ⚙️ PREFERÊNCIAS */
+.pref-btn > button {
+    background: rgba(155,141,255,0.1) !important;
+    border: 1px solid rgba(155,141,255,0.3) !important;
+    color: #c4b5fd !important; font-size: 18px !important;
+    padding: 6px 12px !important; border-radius: 10px !important;
+    box-shadow: none !important; width: auto !important;
+    line-height: 1 !important; transition: all 0.2s !important;
+}
+.pref-btn > button:hover {
+    background: rgba(155,141,255,0.22) !important;
+    border-color: rgba(155,141,255,0.6) !important;
+    transform: rotate(30deg) !important;
+    box-shadow: 0 0 12px rgba(155,141,255,0.3) !important;
+}
+/* PAINEL INLINE DE PREFERÊNCIAS */
+.pref-panel {
+    background: rgba(26,26,46,0.97);
+    border: 1px solid rgba(155,141,255,0.25);
+    border-radius: 16px; padding: 20px 24px;
+    margin-bottom: 20px;
+    backdrop-filter: blur(14px);
+    box-shadow: 0 8px 40px rgba(106,61,232,0.25);
+    animation: fadeInDown 0.18s ease;
+}
+@keyframes fadeInDown {
+    from { opacity:0; transform:translateY(-8px); }
+    to   { opacity:1; transform:translateY(0); }
+}
+/* SELETOR DE IDIOMA NA TELA DE LOGIN */
+.lang-login {
+    display: flex; justify-content: center; gap: 8px;
+    margin-bottom: 20px;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -1186,6 +1221,26 @@ if st.session_state.usuario_id is None:
                 </a>
             </div>
             """, unsafe_allow_html=True)
+
+    # ── Seletor de idioma discreto na tela de login ──
+    st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
+    _idioma_opcoes_login = {"🇧🇷 PT": "PT", "🇺🇸 EN": "EN", "🇫🇷 FR": "FR"}
+    _flags = list(_idioma_opcoes_login.keys())
+    _idx_atual = list(_idioma_opcoes_login.values()).index(st.session_state.lang)
+    _, _lc, _ = st.columns([1, 1.6, 1])
+    with _lc:
+        _lang_sel_login = st.radio(
+            "🌐",
+            options=_flags,
+            index=_idx_atual,
+            horizontal=True,
+            key="lang_radio_login",
+            label_visibility="collapsed"
+        )
+        _nova_lang = _idioma_opcoes_login[_lang_sel_login]
+        if _nova_lang != st.session_state.lang:
+            st.session_state.lang = _nova_lang
+            st.rerun()
     st.stop()
 
 # ═════════════════════════════════════════════
@@ -1223,12 +1278,22 @@ with st.sidebar:
 t = IDIOMAS[st.session_state.lang]
 
 # ── Header ────────────────────────────────────
-col_titulo, col_usuario, col_logout = st.columns([5, 2, 1])
+if "pref_aberto" not in st.session_state:
+    st.session_state.pref_aberto = False
+
+col_titulo, col_usuario, col_pref, col_logout = st.columns([5, 2, 0.6, 0.7])
 with col_titulo:
     st.markdown("# GASTEI ⚡")
     st.markdown(f"<p style='color:#6b7280; margin-top:-12px; margin-bottom:28px;'>{t['app_subtitle']}</p>", unsafe_allow_html=True)
 with col_usuario:
     st.markdown(f"<div style='text-align:right; padding-top:18px; font-size:13px; color:#9ca3af;'>{t['ola']}, <strong style='color:#c4b5fd'>{st.session_state.usuario_nome}</strong> 👋</div>", unsafe_allow_html=True)
+with col_pref:
+    st.markdown("<div style='padding-top:14px'></div>", unsafe_allow_html=True)
+    st.markdown('<div class="pref-btn">', unsafe_allow_html=True)
+    if st.button("⚙️", key="btn_pref_toggle"):
+        st.session_state.pref_aberto = not st.session_state.pref_aberto
+        st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
 with col_logout:
     st.markdown("<div style='padding-top:14px'></div>", unsafe_allow_html=True)
     st.markdown('<div class="logout-btn">', unsafe_allow_html=True)
@@ -1237,6 +1302,48 @@ with col_logout:
         st.session_state.usuario_nome = None
         st.query_params.clear()
         st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
+
+# ── Painel inline de preferências ─────────────
+if st.session_state.pref_aberto:
+    st.markdown('<div class="pref-panel">', unsafe_allow_html=True)
+    _pc1, _pc2, _pc3 = st.columns([1.2, 1.5, 1])
+    with _pc1:
+        st.markdown(f"<p style='color:#9b8dff; font-size:12px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; margin-bottom:6px;'>🌐 Idioma</p>", unsafe_allow_html=True)
+        _idioma_opcoes = {"Português": "PT", "English": "EN", "Français": "FR"}
+        _idx = list(_idioma_opcoes.values()).index(st.session_state.lang)
+        _sel_lang = st.radio(
+            "lang_inline",
+            options=list(_idioma_opcoes.keys()),
+            index=_idx,
+            key="lang_radio_inline",
+            label_visibility="collapsed"
+        )
+        _new_lang = _idioma_opcoes[_sel_lang]
+        if _new_lang != st.session_state.lang:
+            st.session_state.lang = _new_lang
+            t = IDIOMAS[_new_lang]
+            st.rerun()
+    with _pc2:
+        st.markdown(f"<p style='color:#9b8dff; font-size:12px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; margin-bottom:6px;'>💰 {t['salario_titulo']}</p>", unsafe_allow_html=True)
+        _novo_sal = st.number_input(
+            t["salario_input"],
+            min_value=0.0, step=100.0, format="%.2f",
+            value=float(st.session_state.salario),
+            key="sal_inline",
+            label_visibility="collapsed"
+        )
+        if st.button(f"💾 {t['salario_salvo'].replace('✅ ', '')}", key="btn_sal_inline"):
+            st.session_state.salario = _novo_sal
+            st.success(t["salario_salvo"])
+    with _pc3:
+        st.markdown("<p style='color:#6b7280; font-size:11px; margin-top:24px;'>" +
+            ("Fechar painel" if st.session_state.lang == "PT" else
+             "Close panel"  if st.session_state.lang == "EN" else
+             "Fermer") + "</p>", unsafe_allow_html=True)
+        if st.button("✕", key="btn_pref_close"):
+            st.session_state.pref_aberto = False
+            st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
 
 aba_principal, aba_feedback = st.tabs([t["aba_gastos"], t["aba_feedback"]])
