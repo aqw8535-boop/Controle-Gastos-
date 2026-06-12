@@ -1078,7 +1078,7 @@ with st.sidebar:
     _smap = {"Português": "PT", "English": "EN", "Français": "FR"}
     _ssel = st.selectbox(
        # Descobre qual é o índice do idioma atual para o seletor não resetar visualmente
-lista_idiomas = ["Português", "English", "Français"]
+lista_idiomas = "Português", "English", "Français"
 mapeamento_reverso = {"PT": 0, "EN": 1, "FR": 2}
 indice_atual = mapeamento_reverso.get(st.session_state['lang'], 0)
 
