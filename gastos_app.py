@@ -340,6 +340,10 @@ IDIOMAS = {
         "sucesso_conta_criada": "✅ Account created! Login in the next tab.",
     },
     "FR": {
+        "input_senha": "Mot de passe",
+        "input_nova_senha": "Nouveau mot de passe",
+        "input_confirmar_nova": "Confirmer le mot de passe",
+        "input_confirmar_senha": "Confirmer le mot de passe",
         "app_subtitle":         "Finances Personnelles Premium Intelligentes",
         "ola":                  "Bonjour",
         "sair":                 "🚪",
