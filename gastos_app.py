@@ -221,8 +221,10 @@ IDIOMAS = {
         "sucesso_conta_criada": "✅ Conta criada! Faça login na aba ao lado.",
         
     },
-    "EN": {
-        "cad_email":            "Teste*****",
+    "EN": {"input_senha": "Password",
+        "input_nova_senha": "New Password",
+        "input_confirmar_nova": "Confirm New Password",
+        "input_confirmar_senha": "Confirm Password",
         "app_subtitle":         "Intelligent Premium Personal Finance",
         "ola":                  "Hello",
         "sair":                 "🚪",
