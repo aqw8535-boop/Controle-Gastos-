@@ -219,6 +219,7 @@ IDIOMAS = {
         "err_campos_vazios": "Preencha todos os campos.",
         "err_tel_invalido": "Telefone inválido.",
         "sucesso_conta_criada": "✅ Conta criada! Faça login na aba ao lado.",
+        "btn_forgot": "Testando Traducao"
     },
     "EN": {
         "app_subtitle":         "Intelligent Premium Personal Finance",
