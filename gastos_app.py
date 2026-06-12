@@ -3,7 +3,7 @@ import psycopg2
 import psycopg2.extras
 import psycopg2.pool
 import pandas as pd
-from datetime import date, timedelta, datetime
+from datetime import date, timedelta
 import hashlib
 import hmac
 import re
@@ -31,22 +31,34 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────
+#  SESSION STATE — inicializa ANTES de tudo
+# ─────────────────────────────────────────────
+_SS_DEFAULTS = {
+    "usuario_id":   None,
+    "usuario_nome": None,
+    "lang":         "PT",
+    "salario":      0.0,
+    "pref_aberto":  False,
+    "reset_step":   0,
+    "reset_email":  "",
+}
+for _k, _v in _SS_DEFAULTS.items():
+    if _k not in st.session_state:
+        st.session_state[_k] = _v
+
+# ─────────────────────────────────────────────
 #  DICIONÁRIO I18N — TRILÍNGUE
 # ─────────────────────────────────────────────
 IDIOMAS = {
     "PT": {
-        # Geral
         "app_subtitle":         "Finanças Pessoais Premium Inteligentes",
         "ola":                  "Olá",
         "sair":                 "Sair 🚪",
-        # Abas principais
         "aba_gastos":           "📊 Meus Gastos",
         "aba_feedback":         "💬 Feedbacks & Sugestões",
-        # Cards de total
         "total_saidas":         "Total de Saídas Contratadas",
         "comprometido_mes":     "Comprometido Este Mês",
         "salario_comprometido": "Salário Comprometido (Próx. Mês)",
-        # Formulário de lançamento
         "novo_lancamento":      "➕ Novo Lançamento",
         "o_que_comprou":        "O que comprou / Pagou",
         "placeholder_desc":     "Ex: iPhone 16, Aluguel, Internet...",
@@ -65,28 +77,24 @@ IDIOMAS = {
         "salvo_sucesso":        "✅ **{}** salvo com sucesso!",
         "err_descricao":        "⚠️ Preencha a descrição do gasto.",
         "err_valor":            "⚠️ O valor deve ser maior que zero.",
-        # Histórico
         "historico":            "### 📋 Histórico de Vencimentos",
         "filtrar":              "🔍 Filtrar por descrição",
         "placeholder_busca":    "Digite para buscar...",
         "nenhum_lancamento":    "Nenhum lançamento ainda.",
-        # Alertas de vencimento
         "conta_atrasada_s":     "conta atrasada",
         "conta_atrasada_p":     "contas atrasadas",
-        "alerta_atrasada":      "🚨 {} {} — quite agora para não acumular juros!",
         "conta_hoje_s":         "conta vence hoje",
         "conta_hoje_p":         "contas vencem hoje",
-        "alerta_hoje":          "🔥 {} {} — não deixe passar!",
         "conta_breve_s":        "conta vence",
         "conta_breve_p":        "contas vencem",
-        "alerta_breve":         "⚡ {} {} nos próximos 3 dias",
-        # Cabeçalho da tabela
+        "alerta_breve_sufixo":  "nos próximos 3 dias",
+        "alerta_hoje_sufixo":   "não deixe passar!",
+        "alerta_atrasada_sufixo": "quite agora para não acumular juros!",
         "col_descricao":        "Descrição",
         "col_valor":            "Valor",
         "col_vencimento":       "Próximo Vencimento",
         "col_situacao":         "Situação",
         "col_acoes":            "Ações",
-        # Badges e labels de linha
         "label_mensal":         "mensal",
         "label_parcela":        "por parcela",
         "conta_mensal_fixa":    "Conta Mensal Fixa",
@@ -97,28 +105,22 @@ IDIOMAS = {
         "falta_pagar":          "Falta pagar:",
         "recorrente_inf":       "Recorrente ∞",
         "x_restantes":          "x restantes",
-        # Botões de ação
         "btn_pagar":            "💸 Pagar Parcela",
         "btn_quitar":           "🏁 Quitar Tudo",
         "btn_excluir":          "🗑️ Excluir",
-        # Salário
         "salario_titulo":       "💰 Meu Salário Mensal",
         "salario_input":        "Salário Mensal Líquido (R$)",
+        "salario_btn":          "💾 Salvar Salário",
         "salario_salvo":        "✅ Salário atualizado!",
-        "salario_zero_aviso":   "⚠️ Cadastre seu salário na barra lateral para ver o % comprometido.",
+        "salario_zero_aviso":   "⚠️ Cadastre seu salário no painel ⚙️ para ver o % comprometido.",
         "pct_label":            "% do salário comprometido no próximo mês",
-        # Simulação
-        "simulacao_titulo":     "### 🧮 Simulador de Gasto",
-        "simulacao_desc":       "Simule quanto ficaria comprometido ao adicionar um novo gasto.",
-        "sim_valor":            "Valor do gasto simulado (R$)",
-        "sim_parcelas":         "Em quantas parcelas?",
-        "sim_resultado":        "Com este gasto, você comprometeria **R$ {:.2f}/mês** ({:.1f}% do salário).",
-        "sim_ok":               "✅ Dentro do limite saudável (abaixo de 70% do salário).",
         "sim_alerta":           (
-            "TEM CERTEZA QUE QUER FAZER ESTA CONTA? {:.1f}% DO SEU SALÁRIO ESTARÁ COMPROMETIDO; "
-            "É MELHOR NÃO FAZER ESTA CONTA, POIS ESTÁ ALÉM DO QUE VOCÊ CONSEGUE PAGAR PARA O PRÓXIMO MÊS"
+            "⚠️ TEM CERTEZA QUE QUER FAZER ESTA CONTA? {:.1f}% DO SEU SALÁRIO ESTARÁ COMPROMETIDO; "
+            "É MELHOR NÃO FAZER ESTA CONTA, POIS ESTÁ ALÉM DO QUE VOCÊ CONSEGUE PAGAR PARA O PRÓXIMO MÊS!"
         ),
-        # Feedback
+        "sim_ok":               "✅ Dentro do limite saudável (abaixo de 70% do salário).",
+        "sim_info":             "💡 Com este gasto: **R$ {:.2f}/mês** comprometido ({:.1f}% do salário).",
+        "pref_fechar":          "Fechar",
         "feedback_titulo":      "### 💬 Canal Direct de Sugestões & Feedbacks",
         "feedback_sub":         "Sua opinião molda as próximas atualizações da nossa plataforma!",
         "feedback_label":       "Sua mensagem",
@@ -127,8 +129,8 @@ IDIOMAS = {
         "feedback_vazio":       "⚠️ Escreva algo antes de clicar em enviar.",
         "feedback_curto":       "⚠️ Detalhe um pouquinho mais a sua mensagem.",
         "feedback_ok":          "✅ Feedback enviado com absoluto sucesso! Muito obrigado 🙏",
-        # Rodapé
         "rodape":               "© 2026 Gastei App. Todos os direitos reservados. Suporte: finatechsuporte@gmail.com",
+        "idioma_label":         "🌐 Idioma",
     },
     "EN": {
         "app_subtitle":         "Intelligent Premium Personal Finance",
@@ -163,13 +165,13 @@ IDIOMAS = {
         "nenhum_lancamento":    "No entries yet.",
         "conta_atrasada_s":     "overdue bill",
         "conta_atrasada_p":     "overdue bills",
-        "alerta_atrasada":      "🚨 {} {} — pay now to avoid late fees!",
         "conta_hoje_s":         "bill due today",
         "conta_hoje_p":         "bills due today",
-        "alerta_hoje":          "🔥 {} {} — don't let it pass!",
         "conta_breve_s":        "bill due",
         "conta_breve_p":        "bills due",
-        "alerta_breve":         "⚡ {} {} in the next 3 days",
+        "alerta_breve_sufixo":  "in the next 3 days",
+        "alerta_hoje_sufixo":   "don't let it pass!",
+        "alerta_atrasada_sufixo": "pay now to avoid late fees!",
         "col_descricao":        "Description",
         "col_valor":            "Amount",
         "col_vencimento":       "Next Due Date",
@@ -190,19 +192,17 @@ IDIOMAS = {
         "btn_excluir":          "🗑️ Delete",
         "salario_titulo":       "💰 My Monthly Salary",
         "salario_input":        "Net Monthly Salary (R$)",
+        "salario_btn":          "💾 Save Salary",
         "salario_salvo":        "✅ Salary updated!",
-        "salario_zero_aviso":   "⚠️ Set your salary in the sidebar to see the committed % of income.",
+        "salario_zero_aviso":   "⚠️ Set your salary in the ⚙️ panel to see the committed % of income.",
         "pct_label":            "% of salary committed next month",
-        "simulacao_titulo":     "### 🧮 Expense Simulator",
-        "simulacao_desc":       "Simulate how much you'd commit by adding a new expense.",
-        "sim_valor":            "Simulated expense amount (R$)",
-        "sim_parcelas":         "In how many installments?",
-        "sim_resultado":        "With this expense, you'd commit **R$ {:.2f}/month** ({:.1f}% of salary).",
-        "sim_ok":               "✅ Within healthy limit (below 70% of salary).",
         "sim_alerta":           (
-            "ARE YOU SURE YOU WANT TO MAKE THIS EXPENSE? {:.1f}% OF YOUR SALARY WILL BE COMMITTED; "
-            "IT IS BETTER NOT TO MAKE THIS EXPENSE, AS IT IS BEYOND WHAT YOU CAN AFFORD FOR NEXT MONTH"
+            "⚠️ ARE YOU SURE YOU WANT TO MAKE THIS EXPENSE? {:.1f}% OF YOUR SALARY WILL BE COMMITTED; "
+            "IT IS BETTER NOT TO MAKE THIS EXPENSE, AS IT IS BEYOND WHAT YOU CAN AFFORD FOR NEXT MONTH!"
         ),
+        "sim_ok":               "✅ Within healthy limit (below 70% of salary).",
+        "sim_info":             "💡 With this expense: **R$ {:.2f}/month** committed ({:.1f}% of salary).",
+        "pref_fechar":          "Close",
         "feedback_titulo":      "### 💬 Suggestions & Feedback Channel",
         "feedback_sub":         "Your opinion shapes the next updates to our platform!",
         "feedback_label":       "Your message",
@@ -212,6 +212,7 @@ IDIOMAS = {
         "feedback_curto":       "⚠️ Please elaborate a little more on your message.",
         "feedback_ok":          "✅ Feedback sent successfully! Thank you so much 🙏",
         "rodape":               "© 2026 Gastei App. All rights reserved. Support: finatechsuporte@gmail.com",
+        "idioma_label":         "🌐 Language",
     },
     "FR": {
         "app_subtitle":         "Finances Personnelles Premium Intelligentes",
@@ -246,13 +247,13 @@ IDIOMAS = {
         "nenhum_lancamento":    "Aucune entrée pour l'instant.",
         "conta_atrasada_s":     "facture en retard",
         "conta_atrasada_p":     "factures en retard",
-        "alerta_atrasada":      "🚨 {} {} — payez maintenant pour éviter les pénalités !",
         "conta_hoje_s":         "facture due aujourd'hui",
         "conta_hoje_p":         "factures dues aujourd'hui",
-        "alerta_hoje":          "🔥 {} {} — ne laissez pas passer !",
         "conta_breve_s":        "facture due",
         "conta_breve_p":        "factures dues",
-        "alerta_breve":         "⚡ {} {} dans les 3 prochains jours",
+        "alerta_breve_sufixo":  "dans les 3 prochains jours",
+        "alerta_hoje_sufixo":   "ne laissez pas passer !",
+        "alerta_atrasada_sufixo": "payez maintenant pour éviter les pénalités !",
         "col_descricao":        "Description",
         "col_valor":            "Montant",
         "col_vencimento":       "Prochaine Échéance",
@@ -273,19 +274,17 @@ IDIOMAS = {
         "btn_excluir":          "🗑️ Supprimer",
         "salario_titulo":       "💰 Mon Salaire Mensuel",
         "salario_input":        "Salaire Mensuel Net (R$)",
+        "salario_btn":          "💾 Sauvegarder",
         "salario_salvo":        "✅ Salaire mis à jour !",
-        "salario_zero_aviso":   "⚠️ Enregistrez votre salaire dans la barre latérale pour voir le % engagé.",
+        "salario_zero_aviso":   "⚠️ Enregistrez votre salaire dans le panneau ⚙️ pour voir le % engagé.",
         "pct_label":            "% du salaire engagé le mois prochain",
-        "simulacao_titulo":     "### 🧮 Simulateur de Dépense",
-        "simulacao_desc":       "Simulez combien vous engageriez en ajoutant une nouvelle dépense.",
-        "sim_valor":            "Montant de la dépense simulée (R$)",
-        "sim_parcelas":         "En combien de versements ?",
-        "sim_resultado":        "Avec cette dépense, vous engageriez **R$ {:.2f}/mois** ({:.1f}% du salaire).",
-        "sim_ok":               "✅ Dans la limite saine (moins de 70% du salaire).",
         "sim_alerta":           (
-            "ÊTES-VOUS SÛR DE VOULOIR FAIRE CETTE DÉPENSE ? {:.1f}% DE VOTRE SALAIRE SERA ENGAGÉ ; "
-            "IL VAUT MIEUX NE PAS FAIRE CETTE DÉPENSE, CAR ELLE DÉPASSE CE QUE VOUS POUVEZ PAYER POUR LE MOIS PROCHAIN"
+            "⚠️ ÊTES-VOUS SÛR DE VOULOIR FAIRE CETTE DÉPENSE ? {:.1f}% DE VOTRE SALAIRE SERA ENGAGÉ ; "
+            "IL VAUT MIEUX NE PAS FAIRE CETTE DÉPENSE, CAR ELLE DÉPASSE CE QUE VOUS POUVEZ PAYER POUR LE MOIS PROCHAIN !"
         ),
+        "sim_ok":               "✅ Dans la limite saine (moins de 70% du salaire).",
+        "sim_info":             "💡 Avec cette dépense : **R$ {:.2f}/mois** engagé ({:.1f}% du salaire).",
+        "pref_fechar":          "Fermer",
         "feedback_titulo":      "### 💬 Canal de Suggestions & Retours",
         "feedback_sub":         "Votre avis façonne les prochaines mises à jour de notre plateforme !",
         "feedback_label":       "Votre message",
@@ -295,8 +294,15 @@ IDIOMAS = {
         "feedback_curto":       "⚠️ Veuillez développer un peu plus votre message.",
         "feedback_ok":          "✅ Retour envoyé avec succès ! Merci beaucoup 🙏",
         "rodape":               "© 2026 Gastei App. Tous droits réservés. Support : finatechsuporte@gmail.com",
+        "idioma_label":         "🌐 Langue",
     },
 }
+
+# ─────────────────────────────────────────────
+#  ATALHO GLOBAL — sempre lê do session_state
+# ─────────────────────────────────────────────
+def get_t():
+    return IDIOMAS[st.session_state.lang]
 
 # ─────────────────────────────────────────────
 #  CSS GLOBAL
@@ -304,18 +310,12 @@ IDIOMAS = {
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
-
 html, body, [class*="css"] { font-family: 'Sora', sans-serif; }
-
-.stApp {
-    background: linear-gradient(135deg, #0f0f1a 0%, #1a1a2e 50%, #16213e 100%);
-    min-height: 100vh;
-}
+.stApp { background: linear-gradient(135deg, #0f0f1a 0%, #1a1a2e 50%, #16213e 100%); min-height: 100vh; }
 h1 {
     font-family: 'Sora', sans-serif !important; font-weight: 700 !important;
     background: linear-gradient(90deg, #e2c4f0, #9b8dff, #64b5f6);
-    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-    letter-spacing: -0.5px;
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; letter-spacing: -0.5px;
 }
 h2, h3 { font-family: 'Sora', sans-serif !important; color: #c9d1f0 !important; }
 
@@ -326,7 +326,7 @@ h2, h3 { font-family: 'Sora', sans-serif !important; color: #c9d1f0 !important; 
     border-radius: 24px; padding: 48px 40px;
     box-shadow: 0 8px 60px rgba(106,61,232,0.25); backdrop-filter: blur(12px);
 }
-.login-logo  { text-align:center; font-size:52px; margin-bottom:8px; }
+.login-logo { text-align:center; font-size:52px; margin-bottom:8px; }
 .login-title {
     text-align:center; font-size:26px; font-weight:700;
     background: linear-gradient(90deg, #e2c4f0, #9b8dff, #64b5f6);
@@ -344,29 +344,21 @@ h2, h3 { font-family: 'Sora', sans-serif !important; color: #c9d1f0 !important; 
 .total-label { font-size:13px; font-weight:600; letter-spacing:2px; text-transform:uppercase; color:rgba(255,255,255,0.75); margin-bottom:6px; }
 .total-value { font-family:'JetBrains Mono',monospace; font-size:42px; font-weight:700; color:#fff; letter-spacing:-1px; }
 .total-icon  { font-size:56px; opacity:0.5; }
-
 .parcela-card {
     background: linear-gradient(135deg, #1e3a5f 0%, #0d2137 100%);
-    border: 1px solid rgba(100,181,246,0.25); border-radius: 20px;
-    padding: 24px 32px;
+    border: 1px solid rgba(100,181,246,0.25); border-radius: 20px; padding: 24px 32px;
     box-shadow: 0 4px 20px rgba(0,0,0,0.3); margin-bottom: 32px;
     display: flex; align-items: center; justify-content: space-between;
 }
 .parcela-label { font-size:13px; font-weight:600; letter-spacing:2px; text-transform:uppercase; color:rgba(100,181,246,0.75); margin-bottom:6px; }
 .parcela-value { font-family:'JetBrains Mono',monospace; font-size:34px; font-weight:700; color:#64b5f6; }
-
-/* CARD SALÁRIO % */
 .salario-card {
     background: linear-gradient(135deg, #1a2e1e 0%, #0d2118 100%);
-    border: 1px solid rgba(52,211,153,0.25); border-radius: 20px;
-    padding: 24px 32px; margin-bottom: 32px;
+    border: 1px solid rgba(52,211,153,0.25); border-radius: 20px; padding: 24px 32px; margin-bottom: 32px;
     display: flex; align-items: center; justify-content: space-between;
     box-shadow: 0 4px 20px rgba(0,0,0,0.3);
 }
-.salario-card.alerta {
-    background: linear-gradient(135deg, #2e1a1a 0%, #210d0d 100%);
-    border-color: rgba(239,68,68,0.35);
-}
+.salario-card.alerta { background: linear-gradient(135deg, #2e1a1a 0%, #210d0d 100%); border-color: rgba(239,68,68,0.35); }
 .salario-label { font-size:13px; font-weight:600; letter-spacing:2px; text-transform:uppercase; color:rgba(52,211,153,0.75); margin-bottom:6px; }
 .salario-card.alerta .salario-label { color:rgba(239,68,68,0.75); }
 .salario-value { font-family:'JetBrains Mono',monospace; font-size:34px; font-weight:700; color:#34d399; }
@@ -379,30 +371,25 @@ h2, h3 { font-family: 'Sora', sans-serif !important; color: #c9d1f0 !important; 
 }
 .alerta-simulacao {
     background: linear-gradient(135deg, rgba(239,68,68,0.15), rgba(251,146,60,0.1));
-    border: 2px solid rgba(239,68,68,0.6);
-    border-radius: 14px; padding: 18px 22px;
-    font-size: 13px; font-weight: 700; color: #fca5a5;
-    letter-spacing: 0.03em; line-height: 1.6;
-    animation: pulse-alerta 1.8s ease-in-out infinite;
-    margin-top: 12px;
+    border: 2px solid rgba(239,68,68,0.6); border-radius: 14px; padding: 18px 22px;
+    font-size: 13px; font-weight: 700; color: #fca5a5; letter-spacing: 0.03em; line-height: 1.6;
+    animation: pulse-alerta 1.8s ease-in-out infinite; margin-top: 12px;
 }
 .alerta-simulacao .pct-destaque {
-    font-size: 22px; font-weight: 800; color: #ef4444;
-    display: block; margin-bottom: 6px; font-family: 'JetBrains Mono', monospace;
+    font-size: 24px; font-weight: 800; color: #ef4444;
+    display: block; margin-bottom: 8px; font-family: 'JetBrains Mono', monospace;
 }
 
 /* FORMULÁRIO */
 .form-section {
-    background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,255,255,0.09);
+    background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.09);
     border-radius: 20px; padding: 28px 32px; margin-bottom: 32px; backdrop-filter: blur(10px);
 }
 
 /* LINHAS TABELA */
 .lancamento-row {
     background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 14px; padding: 18px 24px;
-    margin-bottom: 10px;
+    border-radius: 14px; padding: 18px 24px; margin-bottom: 10px;
     display: grid; grid-template-columns: 2.2fr 1fr 1fr 1fr 0.8fr;
     align-items: center; transition: all 0.2s;
 }
@@ -410,14 +397,12 @@ h2, h3 { font-family: 'Sora', sans-serif !important; color: #c9d1f0 !important; 
 .lancamento-row.fixa  { border-color: rgba(251,191,36,0.25); }
 .lancamento-row.fixa:hover { background: rgba(251,191,36,0.06); border-color: rgba(251,191,36,0.45); }
 .lancamento-row.urgente {
-    border-color: rgba(239,68,68,0.7);
-    background: rgba(239,68,68,0.08);
+    border-color: rgba(239,68,68,0.7); background: rgba(239,68,68,0.08);
     box-shadow: 0 0 0 1px rgba(239,68,68,0.3), -4px 0 0 0 #ef4444;
 }
 .lancamento-row.urgente:hover { background: rgba(239,68,68,0.13); }
 .lancamento-row.hoje {
-    border-color: rgba(251,146,60,0.8);
-    background: rgba(251,146,60,0.09);
+    border-color: rgba(251,146,60,0.8); background: rgba(251,146,60,0.09);
     box-shadow: 0 0 0 1px rgba(251,146,60,0.35), -4px 0 0 0 #f97316;
     animation: pulse-hoje 2s ease-in-out infinite;
 }
@@ -427,47 +412,31 @@ h2, h3 { font-family: 'Sora', sans-serif !important; color: #c9d1f0 !important; 
     50%      { box-shadow: 0 0 14px rgba(251,146,60,0.35), -4px 0 0 0 #f97316; }
 }
 .lancamento-row.em-breve {
-    border-color: rgba(234,179,8,0.55);
-    background: rgba(234,179,8,0.06);
-    box-shadow: -4px 0 0 0 #ca8a04;
+    border-color: rgba(234,179,8,0.55); background: rgba(234,179,8,0.06); box-shadow: -4px 0 0 0 #ca8a04;
 }
 .lancamento-row.em-breve:hover { background: rgba(234,179,8,0.1); }
 .lancamento-row.pago { opacity: 0.38; }
+
 .alerta-banner {
-    display:flex; align-items:center; gap:8px;
-    background: rgba(239,68,68,0.12);
-    border: 1px solid rgba(239,68,68,0.3);
-    border-radius: 10px; padding: 7px 14px;
-    font-size:11px; font-weight:700; color:#fca5a5;
-    letter-spacing:0.04em; margin-bottom: 20px;
+    display:flex; align-items:center; gap:8px; background: rgba(239,68,68,0.12);
+    border: 1px solid rgba(239,68,68,0.3); border-radius: 10px; padding: 7px 14px;
+    font-size:11px; font-weight:700; color:#fca5a5; letter-spacing:0.04em; margin-bottom: 20px;
 }
-.alerta-banner .count {
-    background: #ef4444; color:#fff;
-    border-radius: 999px; padding: 1px 8px;
-    font-size:11px; font-weight:800;
-}
+.alerta-banner .count { background: #ef4444; color:#fff; border-radius: 999px; padding: 1px 8px; font-size:11px; font-weight:800; }
 .hoje-banner {
-    display:flex; align-items:center; gap:8px;
-    background: rgba(251,146,60,0.12);
-    border: 1px solid rgba(251,146,60,0.35);
-    border-radius: 10px; padding: 7px 14px;
-    font-size:11px; font-weight:700; color:#fdba74;
-    letter-spacing:0.04em; margin-bottom: 8px;
+    display:flex; align-items:center; gap:8px; background: rgba(251,146,60,0.12);
+    border: 1px solid rgba(251,146,60,0.35); border-radius: 10px; padding: 7px 14px;
+    font-size:11px; font-weight:700; color:#fdba74; letter-spacing:0.04em; margin-bottom: 8px;
 }
 .badge-em-breve { background:rgba(234,179,8,0.15); border:1px solid rgba(234,179,8,0.4); color:#fde047; border-radius:999px; padding:4px 12px; font-size:12px; font-weight:700; font-family:'JetBrains Mono',monospace; display:inline-block; }
 
 /* INPUTS */
 label { color:#a0aec0 !important; font-size:13px !important; font-weight:600 !important; letter-spacing:0.5px !important; }
-input, textarea,
-.stTextInput input, .stNumberInput input, .stDateInput input,
+input, textarea, .stTextInput input, .stNumberInput input, .stDateInput input,
 [data-baseweb="input"] input, [data-baseweb="textarea"] textarea,
-div[data-testid="stTextInput"] input,
-div[data-testid="stNumberInput"] input,
-div[data-testid="stDateInput"] input {
-    border-radius: 10px !important;
-    color: #1a1a2e !important;
-    font-family: 'Sora', sans-serif !important; font-size: 15px !important;
-    caret-color: #6a3de8 !important;
+div[data-testid="stTextInput"] input, div[data-testid="stNumberInput"] input, div[data-testid="stDateInput"] input {
+    border-radius: 10px !important; color: #1a1a2e !important;
+    font-family: 'Sora', sans-serif !important; font-size: 15px !important; caret-color: #6a3de8 !important;
 }
 input::placeholder, textarea::placeholder { color: rgba(80,80,120,0.5) !important; }
 .stCheckbox label { color:#c9d1f0 !important; font-size:14px !important; font-weight:600 !important; }
@@ -476,40 +445,53 @@ input::placeholder, textarea::placeholder { color: rgba(80,80,120,0.5) !importan
 .stButton > button {
     background: linear-gradient(135deg, #6a3de8, #9b8dff) !important;
     color: white !important; border: none !important; border-radius: 12px !important;
-    font-family: 'Sora', sans-serif !important; font-weight: 600 !important;
-    font-size: 14px !important;
+    font-family: 'Sora', sans-serif !important; font-weight: 600 !important; font-size: 14px !important;
     padding: 12px 28px !important; width: 100% !important;
-    letter-spacing: 0.5px !important; box-shadow: 0 4px 20px rgba(106,61,232,0.4) !important;
-    transition: all 0.2s !important;
+    letter-spacing: 0.5px !important; box-shadow: 0 4px 20px rgba(106,61,232,0.4) !important; transition: all 0.2s !important;
 }
 .stButton > button:hover { transform: translateY(-2px) !important; box-shadow: 0 8px 30px rgba(106,61,232,0.6) !important; }
-
 .btn-link > button {
-    background: transparent !important; border: none !important;
-    color: #9b8dff !important; font-size: 13px !important;
-    padding: 4px 0 !important; box-shadow: none !important;
-    width: auto !important; text-decoration: underline !important;
-    text-underline-offset: 3px !important; opacity: 0.85 !important;
+    background: transparent !important; border: none !important; color: #9b8dff !important; font-size: 13px !important;
+    padding: 4px 0 !important; box-shadow: none !important; width: auto !important;
+    text-decoration: underline !important; text-underline-offset: 3px !important; opacity: 0.85 !important;
 }
 .btn-link > button:hover { opacity: 1 !important; transform: none !important; box-shadow: none !important; }
-
 .logout-btn > button {
     background: rgba(255,255,255,0.06) !important; border: 1px solid rgba(255,255,255,0.12) !important;
-    font-size: 12px !important; padding: 6px 14px !important;
-    box-shadow: none !important; width: auto !important; color: #9ca3af !important;
+    font-size: 12px !important; padding: 6px 14px !important; box-shadow: none !important;
+    width: auto !important; color: #9ca3af !important;
 }
 .logout-btn > button:hover { background: rgba(255,80,80,0.12) !important; color: #fca5a5 !important; border-color: rgba(255,80,80,0.3) !important; }
-
+.pref-btn > button {
+    background: rgba(155,141,255,0.1) !important; border: 1px solid rgba(155,141,255,0.3) !important;
+    color: #c4b5fd !important; font-size: 18px !important; padding: 6px 12px !important;
+    border-radius: 10px !important; box-shadow: none !important; width: auto !important; transition: all 0.2s !important;
+}
+.pref-btn > button:hover {
+    background: rgba(155,141,255,0.22) !important; border-color: rgba(155,141,255,0.6) !important;
+    transform: rotate(30deg) !important; box-shadow: 0 0 12px rgba(155,141,255,0.3) !important;
+}
 .btn-pagar > button {
     background: linear-gradient(135deg, #059669, #34d399) !important;
     font-size: 11px !important; padding: 6px 10px !important;
     box-shadow: 0 2px 10px rgba(5,150,105,0.3) !important; width: 100% !important;
 }
-
 .btn-quitar > button {
     background: linear-gradient(135deg, #7c3aed, #a78bfa) !important;
     font-size: 11px !important; padding: 6px 10px !important;
     box-shadow: 0 2px 10px rgba(124,58,237,0.3) !important; width: 100% !important;
+}
+
+/* PAINEL PREFERÊNCIAS */
+.pref-panel {
+    background: rgba(26,26,46,0.97); border: 1px solid rgba(155,141,255,0.25);
+    border-radius: 16px; padding: 20px 24px; margin-bottom: 20px;
+    backdrop-filter: blur(14px); box-shadow: 0 8px 40px rgba(106,61,232,0.25);
+    animation: fadeInDown 0.18s ease;
+}
+@keyframes fadeInDown {
+    from { opacity:0; transform:translateY(-8px); }
+    to   { opacity:1; transform:translateY(0); }
 }
 
 /* BADGES */
@@ -526,41 +508,6 @@ hr { border-color:rgba(255,255,255,0.07) !important; margin:28px 0 !important; }
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: rgba(155,141,255,0.4); border-radius: 3px; }
-
-/* BOTÃO ⚙️ PREFERÊNCIAS */
-.pref-btn > button {
-    background: rgba(155,141,255,0.1) !important;
-    border: 1px solid rgba(155,141,255,0.3) !important;
-    color: #c4b5fd !important; font-size: 18px !important;
-    padding: 6px 12px !important; border-radius: 10px !important;
-    box-shadow: none !important; width: auto !important;
-    line-height: 1 !important; transition: all 0.2s !important;
-}
-.pref-btn > button:hover {
-    background: rgba(155,141,255,0.22) !important;
-    border-color: rgba(155,141,255,0.6) !important;
-    transform: rotate(30deg) !important;
-    box-shadow: 0 0 12px rgba(155,141,255,0.3) !important;
-}
-/* PAINEL INLINE DE PREFERÊNCIAS */
-.pref-panel {
-    background: rgba(26,26,46,0.97);
-    border: 1px solid rgba(155,141,255,0.25);
-    border-radius: 16px; padding: 20px 24px;
-    margin-bottom: 20px;
-    backdrop-filter: blur(14px);
-    box-shadow: 0 8px 40px rgba(106,61,232,0.25);
-    animation: fadeInDown 0.18s ease;
-}
-@keyframes fadeInDown {
-    from { opacity:0; transform:translateY(-8px); }
-    to   { opacity:1; transform:translateY(0); }
-}
-/* SELETOR DE IDIOMA NA TELA DE LOGIN */
-.lang-login {
-    display: flex; justify-content: center; gap: 8px;
-    margin-bottom: 20px;
-}
 </style>
 """, unsafe_allow_html=True)
 
@@ -611,418 +558,33 @@ def run_query(sql: str, params=None, fetch=False):
 #  INIT DB
 # ─────────────────────────────────────────────
 def init_db():
-    run_query("""
-        CREATE TABLE IF NOT EXISTS usuarios (
-            id    SERIAL PRIMARY KEY,
-            nome  TEXT NOT NULL,
-            email TEXT NOT NULL UNIQUE,
-            senha TEXT NOT NULL
-        )
-    """)
-    run_query("""
-        CREATE TABLE IF NOT EXISTS licencas_ativas (
-            id             SERIAL PRIMARY KEY,
-            email          TEXT NOT NULL UNIQUE,
-            tipo_licenca   TEXT NOT NULL,
-            expira_em      DATE,
-            criado_em      TIMESTAMP NOT NULL DEFAULT NOW()
-        )
-    """)
-    run_query("""
-        CREATE TABLE IF NOT EXISTS lancamentos (
-            id               SERIAL PRIMARY KEY,
-            usuario_id       INTEGER NOT NULL DEFAULT 0,
-            descricao        TEXT    NOT NULL,
-            valor_total      NUMERIC(12,2) NOT NULL,
-            parcelas_totais  INTEGER NOT NULL,
-            parcelas_pagas   INTEGER NOT NULL DEFAULT 0,
-            inicio_pagamento DATE    NOT NULL,
-            final_pagamento  DATE,
-            recorrente       SMALLINT NOT NULL DEFAULT 0,
-            pago             BOOLEAN NOT NULL DEFAULT FALSE
-        )
-    """)
-    run_query("""
-        CREATE TABLE IF NOT EXISTS feedbacks (
-            id         SERIAL PRIMARY KEY,
-            usuario_id INTEGER NOT NULL,
-            mensagem   TEXT    NOT NULL,
-            criado_em  TIMESTAMP NOT NULL DEFAULT NOW()
-        )
-    """)
-    run_query("""
-        CREATE TABLE IF NOT EXISTS reset_tokens (
-            id         SERIAL PRIMARY KEY,
-            email      TEXT NOT NULL,
-            token      TEXT NOT NULL UNIQUE,
-            criado_em  TIMESTAMP NOT NULL DEFAULT NOW(),
-            usado      BOOLEAN NOT NULL DEFAULT FALSE
-        )
-    """)
-    for col, definition in [
-        ("recorrente",     "SMALLINT NOT NULL DEFAULT 0"),
-        ("usuario_id",     "INTEGER NOT NULL DEFAULT 0"),
-        ("pago",           "BOOLEAN NOT NULL DEFAULT FALSE"),
-        ("parcelas_pagas", "INTEGER NOT NULL DEFAULT 0"),
+    run_query("""CREATE TABLE IF NOT EXISTS usuarios (
+        id SERIAL PRIMARY KEY, nome TEXT NOT NULL, email TEXT NOT NULL UNIQUE, senha TEXT NOT NULL)""")
+    run_query("""CREATE TABLE IF NOT EXISTS licencas_ativas (
+        id SERIAL PRIMARY KEY, email TEXT NOT NULL UNIQUE, tipo_licenca TEXT NOT NULL,
+        expira_em DATE, criado_em TIMESTAMP NOT NULL DEFAULT NOW())""")
+    run_query("""CREATE TABLE IF NOT EXISTS lancamentos (
+        id SERIAL PRIMARY KEY, usuario_id INTEGER NOT NULL DEFAULT 0, descricao TEXT NOT NULL,
+        valor_total NUMERIC(12,2) NOT NULL, parcelas_totais INTEGER NOT NULL,
+        parcelas_pagas INTEGER NOT NULL DEFAULT 0, inicio_pagamento DATE NOT NULL,
+        final_pagamento DATE, recorrente SMALLINT NOT NULL DEFAULT 0, pago BOOLEAN NOT NULL DEFAULT FALSE)""")
+    run_query("""CREATE TABLE IF NOT EXISTS feedbacks (
+        id SERIAL PRIMARY KEY, usuario_id INTEGER NOT NULL, mensagem TEXT NOT NULL,
+        criado_em TIMESTAMP NOT NULL DEFAULT NOW())""")
+    run_query("""CREATE TABLE IF NOT EXISTS reset_tokens (
+        id SERIAL PRIMARY KEY, email TEXT NOT NULL, token TEXT NOT NULL UNIQUE,
+        criado_em TIMESTAMP NOT NULL DEFAULT NOW(), usado BOOLEAN NOT NULL DEFAULT FALSE)""")
+    for col, defn in [
+        ("recorrente","SMALLINT NOT NULL DEFAULT 0"), ("usuario_id","INTEGER NOT NULL DEFAULT 0"),
+        ("pago","BOOLEAN NOT NULL DEFAULT FALSE"),    ("parcelas_pagas","INTEGER NOT NULL DEFAULT 0"),
     ]:
-        run_query(f"""
-            DO $$ BEGIN
-                IF NOT EXISTS (
-                    SELECT 1 FROM information_schema.columns
-                    WHERE table_name='lancamentos' AND column_name='{col}'
-                ) THEN ALTER TABLE lancamentos ADD COLUMN {col} {definition};
-                END IF;
-            END$$
-        """)
-    run_query("""
-        DO $$ BEGIN
-            IF NOT EXISTS (
-                SELECT 1 FROM information_schema.columns
-                WHERE table_name='usuarios' AND column_name='telefone'
-            ) THEN ALTER TABLE usuarios ADD COLUMN telefone TEXT DEFAULT '';
-            END IF;
-        END$$
-    """)
+        run_query(f"""DO $$ BEGIN IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns WHERE table_name='lancamentos' AND column_name='{col}'
+        ) THEN ALTER TABLE lancamentos ADD COLUMN {col} {defn}; END IF; END$$""")
+    run_query("""DO $$ BEGIN IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns WHERE table_name='usuarios' AND column_name='telefone'
+    ) THEN ALTER TABLE usuarios ADD COLUMN telefone TEXT DEFAULT ''; END IF; END$$""")
 
-# ─────────────────────────────────────────────
-#  PAYWALL
-# ─────────────────────────────────────────────
-@st.cache_data(ttl=300, show_spinner=False)
-def verificar_status_licenca(email: str) -> tuple:
-    try:
-        rows = run_query("SELECT * FROM licencas_ativas WHERE email = %s", (email.strip().lower(),), fetch=True)
-        if not rows:
-            return False, "não_autorizado"
-        licenca = rows[0]
-        if licenca["tipo_licenca"] == "vitalicio":
-            return True, "vitalicio"
-        if licenca["tipo_licenca"] == "assinatura":
-            if licenca["expira_em"] is None:
-                return True, "assinatura_valida"
-            if to_date(licenca["expira_em"]) >= date.today():
-                return True, "assinatura_valida"
-            else:
-                return False, "assinatura_expirada"
-        return False, "invalido"
-    except Exception:
-        return False, "erro"
-
-# ─────────────────────────────────────────────
-#  HELPERS
-# ─────────────────────────────────────────────
-def hash_senha(s: str) -> str:
-    return hashlib.sha256(s.encode()).hexdigest()
-
-def _token_secret() -> str:
-    return st.secrets.get("token_secret", "dev-fallback-inseguro-troque-nos-secrets")
-
-def gerar_token_sessao(usuario_id: int) -> str:
-    payload = str(usuario_id)
-    sig = hmac.new(
-        _token_secret().encode("utf-8"),
-        payload.encode("utf-8"),
-        hashlib.sha256
-    ).hexdigest()
-    return f"{payload}.{sig}"
-
-def validar_token_sessao(token: str):
-    try:
-        payload, sig_recebida = token.rsplit(".", 1)
-        sig_esperada = hmac.new(
-            _token_secret().encode("utf-8"),
-            payload.encode("utf-8"),
-            hashlib.sha256
-        ).hexdigest()
-        if hmac.compare_digest(sig_esperada, sig_recebida):
-            return int(payload)
-    except Exception:
-        pass
-    return None
-
-def email_valido(e: str) -> bool:
-    return bool(re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", e))
-
-def to_date(val):
-    if val is None: return None
-    if isinstance(val, date): return val
-    if hasattr(val, "date"): return val.date()
-    return date.fromisoformat(str(val))
-
-def telefone_valido(tel: str) -> bool:
-    digits = re.sub(r'\D', '', tel)
-    return 10 <= len(digits) <= 13
-
-# ── Reset de Senha ──────────────────────────────
-def gerar_token_reset(email: str) -> str | None:
-    try:
-        run_query(
-            "UPDATE reset_tokens SET usado=TRUE WHERE email=%s AND usado=FALSE",
-            (email.strip().lower(),)
-        )
-        token = str(_secrets.randbelow(900000) + 100000)
-        run_query(
-            "INSERT INTO reset_tokens (email, token) VALUES (%s, %s)",
-            (email.strip().lower(), token)
-        )
-        return token
-    except Exception as e:
-        st.error(f"❌ Erro ao gerar token: {e}")
-        return None
-
-def validar_token_reset(email: str, token: str) -> bool:
-    try:
-        rows = run_query(
-            """SELECT id FROM reset_tokens
-               WHERE email=%s AND token=%s AND usado=FALSE
-                 AND criado_em > NOW() - INTERVAL '15 minutes'""",
-            (email.strip().lower(), token.strip()),
-            fetch=True
-        )
-        return bool(rows)
-    except Exception:
-        return False
-
-def consumir_token_reset(email: str, token: str) -> bool:
-    try:
-        run_query(
-            "UPDATE reset_tokens SET usado=TRUE WHERE email=%s AND token=%s",
-            (email.strip().lower(), token.strip())
-        )
-        return True
-    except Exception:
-        return False
-
-def trocar_senha(email: str, nova_senha: str) -> bool:
-    try:
-        run_query(
-            "UPDATE usuarios SET senha=%s WHERE email=%s",
-            (hash_senha(nova_senha), email.strip().lower())
-        )
-        return True
-    except Exception as e:
-        st.error(f"❌ Erro ao trocar senha: {e}")
-        return False
-
-def enviar_email_reset(destinatario: str, token: str) -> bool:
-    try:
-        cfg = st.secrets["email"]
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = "🔐 Gastei — Código de Redefinição de Senha"
-        msg["From"]    = cfg["remetente"]
-        msg["To"]      = destinatario
-        html = f"""
-        <div style="font-family:Sora,sans-serif; max-width:480px; margin:auto;
-                    background:#1a1a2e; border-radius:16px; padding:40px; color:#e8e4ff;">
-            <div style="text-align:center; font-size:48px; margin-bottom:8px;">💳</div>
-            <h2 style="text-align:center; background:linear-gradient(90deg,#9b8dff,#64b5f6);
-                       -webkit-background-clip:text; -webkit-text-fill-color:transparent;
-                       margin-bottom:24px;">Redefinição de Senha</h2>
-            <p style="color:#9ca3af; text-align:center; margin-bottom:32px;">
-                Use o código abaixo para redefinir sua senha.<br>
-                Ele expira em <strong style="color:#e8e4ff;">15 minutos</strong>.
-            </p>
-            <div style="background:#6a3de8; border-radius:12px; padding:20px;
-                        text-align:center; letter-spacing:12px;
-                        font-size:36px; font-weight:700; color:#fff;
-                        font-family:'JetBrains Mono',monospace; margin-bottom:28px;">
-                {token}
-            </div>
-            <p style="color:#6b7280; font-size:12px; text-align:center;">
-                Se você não solicitou isso, ignore este e-mail.<br>
-                Suporte: suporte@finatec.com.br
-            </p>
-        </div>
-        """
-        msg.attach(MIMEText(html, "html"))
-        porta = int(cfg.get("smtp_port", 587))
-        if porta == 465:
-            ctx = __import__('ssl').create_default_context()
-            with smtplib.SMTP_SSL(cfg["smtp_host"], porta, context=ctx) as srv:
-                srv.login(cfg["remetente"], cfg["senha_smtp"])
-                srv.sendmail(cfg["remetente"], destinatario, msg.as_string())
-        else:
-            with smtplib.SMTP(cfg["smtp_host"], porta, timeout=10) as srv:
-                srv.ehlo(); srv.starttls(); srv.ehlo()
-                srv.login(cfg["remetente"], cfg["senha_smtp"])
-                srv.sendmail(cfg["remetente"], destinatario, msg.as_string())
-        return True
-    except Exception as e:
-        st.error(f"❌ Falha ao enviar e-mail: {e}")
-        return False
-
-# ── Usuários ──────────────────────────────────
-def criar_usuario(nome, email, senha, telefone=""):
-    permitido, motivo = verificar_status_licenca(email)
-    if not permitido:
-        if motivo == "não_autorizado":
-            return False, "Acesso Negado! Este e-mail não possui uma licença ativa. Compre o acesso na nossa página oficial antes de se cadastrar."
-        elif motivo == "assinatura_expirada":
-            return False, "Sua assinatura expirou! Por favor, realize a renovação para reativar seu cadastro."
-        return False, "Licença de acesso inválida."
-    try:
-        run_query(
-            "INSERT INTO usuarios (nome, email, senha, telefone) VALUES (%s, %s, %s, %s)",
-            (nome.strip(), email.strip().lower(), hash_senha(senha), telefone.strip())
-        )
-        return True, "ok"
-    except psycopg2.errors.UniqueViolation:
-        try: get_pool().getconn().rollback()
-        except: pass
-        return False, "Este e-mail já está cadastrado."
-    except Exception as e:
-        return False, f"Erro ao criar conta: {e}"
-
-def autenticar_usuario(email, sender_senha):
-    try:
-        permitido, _ = verificar_status_licenca(email)
-        if not permitido:
-            return "bloqueado"
-        rows = run_query(
-            "SELECT id, nome FROM usuarios WHERE email=%s AND senha=%s",
-            (email.strip().lower(), hash_senha(sender_senha)), fetch=True
-        )
-        return (rows[0]["id"], rows[0]["nome"]) if rows else None
-    except Exception:
-        return None
-
-# ── Lançamentos ───────────────────────────────
-def inserir_lancamento(uid, descricao, valor_total, parcelas_totais, inicio, final, recorrente):
-    try:
-        run_query("""
-            INSERT INTO lancamentos
-                (usuario_id, descricao, valor_total, parcelas_totais, parcelas_pagas,
-                 inicio_pagamento, final_pagamento, recorrente, pago)
-            VALUES (%s,%s,%s,%s,0,%s,%s,%s,FALSE)
-        """, (uid, descricao, float(valor_total), parcelas_totais,
-              inicio, final if final else None, 1 if recorrente else 0))
-        invalidar_cache_lancamentos()
-    except Exception as e:
-        st.error(f"❌ Erro ao salvar lançamento: {e}")
-
-@st.cache_data(ttl=30, show_spinner=False)
-def carregar_lancamentos(uid) -> pd.DataFrame:
-    try:
-        rows = run_query(
-            "SELECT * FROM lancamentos WHERE usuario_id=%s", (uid,), fetch=True
-        )
-        if not rows:
-            return pd.DataFrame(columns=[
-                "id","usuario_id","descricao","valor_total","parcelas_totais","parcelas_pagas",
-                "inicio_pagamento","final_pagamento","recorrente","pago"
-            ])
-        return pd.DataFrame([dict(r) for r in rows])
-    except Exception as e:
-        st.error(f"❌ Erro ao carregar lançamentos: {e}")
-        return pd.DataFrame()
-
-def invalidar_cache_lancamentos():
-    carregar_lancamentos.clear()
-
-def excluir_lancamento(id_):
-    try:
-        run_query("DELETE FROM lancamentos WHERE id=%s", (id_,))
-        invalidar_cache_lancamentos()
-    except Exception as e:
-        st.error(f"❌ Erro ao excluir: {e}")
-
-def marcar_pago(id_):
-    try:
-        run_query("UPDATE lancamentos SET pago=TRUE WHERE id=%s", (id_,))
-        invalidar_cache_lancamentos()
-    except Exception as e:
-        st.error(f"❌ Erro ao marcar como pago: {e}")
-
-def avancar_parcela_recorrente(id_, inicio_pagamento):
-    try:
-        inicio = to_date(inicio_pagamento)
-        dia = inicio.day
-        mes = inicio.month % 12 + 1
-        ano = inicio.year + (1 if inicio.month == 12 else 0)
-        try:
-            novo_inicio = date(ano, mes, dia)
-        except ValueError:
-            novo_inicio = date(ano, mes, calendar.monthrange(ano, mes)[1])
-        run_query(
-            "UPDATE lancamentos SET inicio_pagamento=%s, pago=FALSE WHERE id=%s",
-            (novo_inicio, id_)
-        )
-        invalidar_cache_lancamentos()
-    except Exception as e:
-        st.error(f"❌ Erro ao avançar parcela recorrente: {e}")
-
-def avancar_parcela_parcelada_excel(id_, inicio_pagamento, parcelas_totais, parcelas_pagas_atual):
-    try:
-        proxima_paga = parcelas_pagas_atual + 1
-        if proxima_paga >= parcelas_totais:
-            run_query("UPDATE lancamentos SET parcelas_pagas=%s, pago=TRUE WHERE id=%s", (parcelas_totais, id_))
-        else:
-            inicio = to_date(inicio_pagamento)
-            dia = inicio.day
-            mes = inicio.month % 12 + 1
-            ano = inicio.year + (1 if inicio.month == 12 else 0)
-            try:
-                novo_inicio = date(ano, mes, dia)
-            except ValueError:
-                novo_inicio = date(ano, mes, calendar.monthrange(ano, mes)[1])
-            run_query(
-                "UPDATE lancamentos SET inicio_pagamento=%s, parcelas_pagas=%s WHERE id=%s",
-                (novo_inicio, proxima_paga, id_)
-            )
-        invalidar_cache_lancamentos()
-    except Exception as e:
-        st.error(f"❌ Erro ao avançar parcela: {e}")
-
-def inserir_feedback(uid, mensagem):
-    try:
-        run_query(
-            "INSERT INTO feedbacks (usuario_id, mensagem) VALUES (%s,%s)",
-            (uid, mensagem.strip())
-        )
-        return True
-    except Exception as e:
-        st.error(f"❌ Erro ao enviar feedback: {e}")
-        return False
-
-# ─────────────────────────────────────────────
-#  LÓGICA DE CÁLCULO
-# ─────────────────────────────────────────────
-def calcular_proxima_recorrente(inicio_pagamento) -> date:
-    hoje  = date.today()
-    inicio = to_date(inicio_pagamento)
-    dia   = inicio.day
-    def montar(ano, mes):
-        try:    return date(ano, mes, dia)
-        except: return date(ano, mes, (date(ano, mes % 12 + 1, 1) - timedelta(days=1)).day)
-    c = montar(hoje.year, hoje.month)
-    if c < hoje:
-        mes = hoje.month % 12 + 1
-        ano = hoje.year + (1 if hoje.month == 12 else 0)
-        c   = montar(ano, mes)
-    return c
-
-def calcular_valor_parcela(valor_total, parcelas_totais: int) -> float:
-    return float(valor_total) / parcelas_totais if parcelas_totais > 0 else 0.0
-
-def calcular_gasto_mensal(df: pd.DataFrame) -> float:
-    if df.empty:
-        return 0.0
-    df_a = df[~df["pago"].astype(bool)].copy()
-    if df_a.empty:
-        return 0.0
-    df_a["valor_total"]     = df_a["valor_total"].astype(float)
-    df_a["parcelas_totais"] = df_a["parcelas_totais"].astype(int)
-    recorrentes  = df_a[df_a["recorrente"].astype(int) == 1]["valor_total"].sum()
-    parcelados   = df_a[df_a["recorrente"].astype(int) == 0]
-    parcela_vals = parcelados["valor_total"] / parcelados["parcelas_totais"].replace(0, 1)
-    return float(recorrentes + parcela_vals.sum())
-
-def calcular_gasto_proximo_mes(df: pd.DataFrame) -> float:
-    """Soma do que será devido no próximo mês (recorrentes + parcelas ativas)."""
-    return calcular_gasto_mensal(df)
-
-# ─────────────────────────────────────────────
-#  INIT EXECUTION
-# ─────────────────────────────────────────────
 @st.cache_resource
 def init_db_once():
     init_db()
@@ -1034,34 +596,259 @@ except Exception as e:
     st.stop()
 
 # ─────────────────────────────────────────────
-#  SESSION STATE
+#  HELPERS
 # ─────────────────────────────────────────────
-if "usuario_id"   not in st.session_state: st.session_state.usuario_id   = None
-if "usuario_nome" not in st.session_state: st.session_state.usuario_nome = None
-if "lang"         not in st.session_state: st.session_state.lang         = "PT"
-if "salario"      not in st.session_state: st.session_state.salario      = 0.0
+def hash_senha(s): return hashlib.sha256(s.encode()).hexdigest()
+def email_valido(e): return bool(re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", e))
+def telefone_valido(tel): d = re.sub(r'\D','',tel); return 10 <= len(d) <= 13
+def to_date(val):
+    if val is None: return None
+    if isinstance(val, date): return val
+    if hasattr(val, "date"): return val.date()
+    return date.fromisoformat(str(val))
 
+def _token_secret():
+    return st.secrets.get("token_secret", "dev-fallback-inseguro-troque-nos-secrets")
+
+def gerar_token_sessao(uid):
+    payload = str(uid)
+    sig = hmac.new(_token_secret().encode(), payload.encode(), hashlib.sha256).hexdigest()
+    return f"{payload}.{sig}"
+
+def validar_token_sessao(token):
+    try:
+        payload, sig_r = token.rsplit(".", 1)
+        sig_e = hmac.new(_token_secret().encode(), payload.encode(), hashlib.sha256).hexdigest()
+        if hmac.compare_digest(sig_e, sig_r): return int(payload)
+    except: pass
+    return None
+
+# ─────────────────────────────────────────────
+#  PAYWALL
+# ─────────────────────────────────────────────
+@st.cache_data(ttl=300, show_spinner=False)
+def verificar_status_licenca(email):
+    try:
+        rows = run_query("SELECT * FROM licencas_ativas WHERE email=%s", (email.strip().lower(),), fetch=True)
+        if not rows: return False, "não_autorizado"
+        l = rows[0]
+        if l["tipo_licenca"] == "vitalicio": return True, "vitalicio"
+        if l["tipo_licenca"] == "assinatura":
+            if l["expira_em"] is None: return True, "assinatura_valida"
+            return (True,"assinatura_valida") if to_date(l["expira_em"]) >= date.today() else (False,"assinatura_expirada")
+        return False, "invalido"
+    except: return False, "erro"
+
+# ─────────────────────────────────────────────
+#  RESET DE SENHA
+# ─────────────────────────────────────────────
+def gerar_token_reset(email):
+    try:
+        run_query("UPDATE reset_tokens SET usado=TRUE WHERE email=%s AND usado=FALSE", (email.strip().lower(),))
+        token = str(_secrets.randbelow(900000) + 100000)
+        run_query("INSERT INTO reset_tokens (email, token) VALUES (%s,%s)", (email.strip().lower(), token))
+        return token
+    except Exception as e:
+        st.error(f"❌ Erro ao gerar token: {e}"); return None
+
+def validar_token_reset(email, token):
+    try:
+        rows = run_query(
+            "SELECT id FROM reset_tokens WHERE email=%s AND token=%s AND usado=FALSE AND criado_em > NOW() - INTERVAL '15 minutes'",
+            (email.strip().lower(), token.strip()), fetch=True)
+        return bool(rows)
+    except: return False
+
+def consumir_token_reset(email, token):
+    try:
+        run_query("UPDATE reset_tokens SET usado=TRUE WHERE email=%s AND token=%s", (email.strip().lower(), token.strip()))
+        return True
+    except: return False
+
+def trocar_senha(email, nova):
+    try:
+        run_query("UPDATE usuarios SET senha=%s WHERE email=%s", (hash_senha(nova), email.strip().lower()))
+        return True
+    except Exception as e:
+        st.error(f"❌ {e}"); return False
+
+def enviar_email_reset(destinatario, token):
+    try:
+        cfg = st.secrets["email"]
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = "🔐 Gastei — Código de Redefinição de Senha"
+        msg["From"] = cfg["remetente"]; msg["To"] = destinatario
+        html = f"""<div style="font-family:Sora,sans-serif;max-width:480px;margin:auto;background:#1a1a2e;border-radius:16px;padding:40px;color:#e8e4ff;">
+            <div style="text-align:center;font-size:48px;margin-bottom:8px;">💳</div>
+            <h2 style="text-align:center;background:linear-gradient(90deg,#9b8dff,#64b5f6);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:24px;">Redefinição de Senha</h2>
+            <p style="color:#9ca3af;text-align:center;margin-bottom:32px;">Use o código abaixo. Ele expira em <strong style="color:#e8e4ff;">15 minutos</strong>.</p>
+            <div style="background:#6a3de8;border-radius:12px;padding:20px;text-align:center;letter-spacing:12px;font-size:36px;font-weight:700;color:#fff;font-family:'JetBrains Mono',monospace;margin-bottom:28px;">{token}</div>
+            <p style="color:#6b7280;font-size:12px;text-align:center;">Se não solicitou, ignore.<br>Suporte: suporte@finatec.com.br</p></div>"""
+        msg.attach(MIMEText(html, "html"))
+        porta = int(cfg.get("smtp_port", 587))
+        if porta == 465:
+            import ssl; ctx = ssl.create_default_context()
+            with smtplib.SMTP_SSL(cfg["smtp_host"], porta, context=ctx) as s:
+                s.login(cfg["remetente"], cfg["senha_smtp"]); s.sendmail(cfg["remetente"], destinatario, msg.as_string())
+        else:
+            with smtplib.SMTP(cfg["smtp_host"], porta, timeout=10) as s:
+                s.ehlo(); s.starttls(); s.ehlo(); s.login(cfg["remetente"], cfg["senha_smtp"])
+                s.sendmail(cfg["remetente"], destinatario, msg.as_string())
+        return True
+    except Exception as e:
+        st.error(f"❌ Falha ao enviar e-mail: {e}"); return False
+
+# ─────────────────────────────────────────────
+#  USUÁRIOS
+# ─────────────────────────────────────────────
+def criar_usuario(nome, email, senha, telefone=""):
+    ok, motivo = verificar_status_licenca(email)
+    if not ok:
+        msgs = {"não_autorizado": "Acesso Negado! Este e-mail não possui licença ativa.",
+                "assinatura_expirada": "Assinatura expirada! Renove para reativar."}
+        return False, msgs.get(motivo, "Licença inválida.")
+    try:
+        run_query("INSERT INTO usuarios (nome,email,senha,telefone) VALUES (%s,%s,%s,%s)",
+                  (nome.strip(), email.strip().lower(), hash_senha(senha), telefone.strip()))
+        return True, "ok"
+    except psycopg2.errors.UniqueViolation:
+        return False, "Este e-mail já está cadastrado."
+    except Exception as e:
+        return False, f"Erro: {e}"
+
+def autenticar_usuario(email, senha):
+    try:
+        ok, _ = verificar_status_licenca(email)
+        if not ok: return "bloqueado"
+        rows = run_query("SELECT id,nome FROM usuarios WHERE email=%s AND senha=%s",
+                         (email.strip().lower(), hash_senha(senha)), fetch=True)
+        return (rows[0]["id"], rows[0]["nome"]) if rows else None
+    except: return None
+
+# ─────────────────────────────────────────────
+#  LANÇAMENTOS
+# ─────────────────────────────────────────────
+def inserir_lancamento(uid, desc, valor, parcelas, inicio, final, recorrente):
+    try:
+        run_query("""INSERT INTO lancamentos
+            (usuario_id,descricao,valor_total,parcelas_totais,parcelas_pagas,inicio_pagamento,final_pagamento,recorrente,pago)
+            VALUES (%s,%s,%s,%s,0,%s,%s,%s,FALSE)""",
+            (uid, desc, float(valor), parcelas, inicio, final or None, 1 if recorrente else 0))
+        invalidar_cache_lancamentos()
+    except Exception as e: st.error(f"❌ {e}")
+
+@st.cache_data(ttl=30, show_spinner=False)
+def carregar_lancamentos(uid):
+    try:
+        rows = run_query("SELECT * FROM lancamentos WHERE usuario_id=%s", (uid,), fetch=True)
+        if not rows:
+            return pd.DataFrame(columns=["id","usuario_id","descricao","valor_total","parcelas_totais",
+                                          "parcelas_pagas","inicio_pagamento","final_pagamento","recorrente","pago"])
+        return pd.DataFrame([dict(r) for r in rows])
+    except Exception as e:
+        st.error(f"❌ {e}"); return pd.DataFrame()
+
+def invalidar_cache_lancamentos(): carregar_lancamentos.clear()
+
+def excluir_lancamento(id_):
+    try: run_query("DELETE FROM lancamentos WHERE id=%s", (id_,)); invalidar_cache_lancamentos()
+    except Exception as e: st.error(f"❌ {e}")
+
+def marcar_pago(id_):
+    try: run_query("UPDATE lancamentos SET pago=TRUE WHERE id=%s", (id_,)); invalidar_cache_lancamentos()
+    except Exception as e: st.error(f"❌ {e}")
+
+def _prox_mes_date(inicio_pagamento):
+    inicio = to_date(inicio_pagamento); dia = inicio.day
+    mes = inicio.month % 12 + 1; ano = inicio.year + (1 if inicio.month == 12 else 0)
+    try: return date(ano, mes, dia)
+    except: return date(ano, mes, calendar.monthrange(ano, mes)[1])
+
+def avancar_parcela_recorrente(id_, inicio):
+    try:
+        run_query("UPDATE lancamentos SET inicio_pagamento=%s, pago=FALSE WHERE id=%s", (_prox_mes_date(inicio), id_))
+        invalidar_cache_lancamentos()
+    except Exception as e: st.error(f"❌ {e}")
+
+def avancar_parcela_parcelada_excel(id_, inicio, parc_tot, pagas):
+    try:
+        prox = pagas + 1
+        if prox >= parc_tot:
+            run_query("UPDATE lancamentos SET parcelas_pagas=%s, pago=TRUE WHERE id=%s", (parc_tot, id_))
+        else:
+            run_query("UPDATE lancamentos SET inicio_pagamento=%s, parcelas_pagas=%s WHERE id=%s",
+                      (_prox_mes_date(inicio), prox, id_))
+        invalidar_cache_lancamentos()
+    except Exception as e: st.error(f"❌ {e}")
+
+def inserir_feedback(uid, mensagem):
+    try:
+        run_query("INSERT INTO feedbacks (usuario_id,mensagem) VALUES (%s,%s)", (uid, mensagem.strip()))
+        return True
+    except Exception as e: st.error(f"❌ {e}"); return False
+
+# ─────────────────────────────────────────────
+#  CÁLCULOS
+# ─────────────────────────────────────────────
+def calcular_proxima_recorrente(inicio_pagamento):
+    hoje = date.today(); inicio = to_date(inicio_pagamento); dia = inicio.day
+    def montar(ano, mes):
+        try: return date(ano, mes, dia)
+        except: return date(ano, mes, (date(ano, mes % 12 + 1, 1) - timedelta(days=1)).day)
+    c = montar(hoje.year, hoje.month)
+    if c < hoje:
+        mes = hoje.month % 12 + 1; ano = hoje.year + (1 if hoje.month == 12 else 0)
+        c = montar(ano, mes)
+    return c
+
+def calcular_valor_parcela(valor_total, parcelas_totais):
+    return float(valor_total) / parcelas_totais if parcelas_totais > 0 else 0.0
+
+def calcular_gasto_mensal(df):
+    if df.empty: return 0.0
+    df_a = df[~df["pago"].astype(bool)].copy()
+    if df_a.empty: return 0.0
+    df_a["valor_total"] = df_a["valor_total"].astype(float)
+    df_a["parcelas_totais"] = df_a["parcelas_totais"].astype(int)
+    rec = df_a[df_a["recorrente"].astype(int) == 1]["valor_total"].sum()
+    par = df_a[df_a["recorrente"].astype(int) == 0]
+    return float(rec + (par["valor_total"] / par["parcelas_totais"].replace(0, 1)).sum())
+
+# ═════════════════════════════════════════════
+#  VALIDAÇÃO TOKEN DE SESSÃO NA URL
+# ═════════════════════════════════════════════
 if st.session_state.usuario_id is None:
     token_param = st.query_params.get("s", None)
     if token_param:
-        uid_validado = validar_token_sessao(token_param)
-        if uid_validado:
+        uid_val = validar_token_sessao(token_param)
+        if uid_val:
             try:
-                rows = run_query("SELECT id, nome FROM usuarios WHERE id=%s", (uid_validado,), fetch=True)
+                rows = run_query("SELECT id,nome FROM usuarios WHERE id=%s", (uid_val,), fetch=True)
                 if rows:
                     st.session_state.usuario_id   = rows[0]["id"]
                     st.session_state.usuario_nome = rows[0]["nome"]
-                else:
-                    st.query_params.clear()
-            except Exception:
-                pass
-        else:
-            st.query_params.clear()
+                else: st.query_params.clear()
+            except: pass
+        else: st.query_params.clear()
 
 # ═════════════════════════════════════════════
 #  TELA DE LOGIN / CADASTRO
 # ═════════════════════════════════════════════
 if st.session_state.usuario_id is None:
+
+    # ── Seletor de idioma no topo (fora do col_center para ficar visível) ──
+    _lang_map = {"🇧🇷 Português": "PT", "🇺🇸 English": "EN", "🇫🇷 Français": "FR"}
+    _lang_inv = {v: k for k, v in _lang_map.items()}
+    _, _lc_lang, _ = st.columns([1, 1.6, 1])
+    with _lc_lang:
+        _sel = st.radio(
+            "idioma_login", options=list(_lang_map.keys()),
+            index=list(_lang_map.values()).index(st.session_state.lang),
+            horizontal=True, key="lang_radio_login", label_visibility="collapsed"
+        )
+        # FIX: atualiza session_state diretamente — sem rerun() para não travar o widget
+        st.session_state.lang = _lang_map[_sel]
+
     _, col_center, _ = st.columns([1, 1.6, 1])
     with col_center:
         st.markdown("""
@@ -1075,22 +862,18 @@ if st.session_state.usuario_id is None:
         aba_login, aba_cadastro = st.tabs(["🔑  Entrar", "✨  Criar Conta"])
 
         with aba_login:
-            if "reset_step"  not in st.session_state: st.session_state.reset_step  = 0
-            if "reset_email" not in st.session_state: st.session_state.reset_email = ""
-
             if st.session_state.reset_step == 0:
                 st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
                 email_login = st.text_input("E-mail", key="login_email", placeholder="seu@email.com")
                 senha_login = st.text_input("Senha", type="password", key="login_senha", placeholder="••••••••")
                 st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-
                 if st.button("Entrar →", key="btn_login"):
                     if not email_login or not senha_login:
                         st.error("Preencha e-mail e senha.")
                     else:
                         resultado = autenticar_usuario(email_login, senha_login)
                         if resultado == "bloqueado":
-                            st.error("🛑 Acesso Bloqueado! Sua assinatura expirou ou seu e-mail não está autorizado. Entre em contato com o suporte para renovar.")
+                            st.error("🛑 Acesso Bloqueado! Assinatura expirada ou e-mail não autorizado.")
                         elif resultado:
                             st.session_state.usuario_id   = resultado[0]
                             st.session_state.usuario_nome = resultado[1]
@@ -1098,149 +881,99 @@ if st.session_state.usuario_id is None:
                             st.rerun()
                         else:
                             st.error("E-mail ou senha incorretos.")
-
                 st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
                 st.markdown('<div class="btn-link">', unsafe_allow_html=True)
                 if st.button("🔑 Esqueci minha senha", key="btn_forgot"):
-                    st.session_state.reset_step = 1
-                    st.rerun()
+                    st.session_state.reset_step = 1; st.rerun()
                 st.markdown('</div>', unsafe_allow_html=True)
-                st.markdown("<div style='height:2px'></div>", unsafe_allow_html=True)
-
                 numero_suporte = "5567991158892"
                 msg_wa = "Olá! Quero verificar o status do meu acesso no app Gastei."
-                link_wa = f"https://wa.me/{numero_suporte}?text={msg_wa.replace(' ', '%20')}"
+                link_wa = f"https://wa.me/{numero_suporte}?text={msg_wa.replace(' ','%20')}"
                 st.markdown(f"""
-                <div style='text-align:center; margin-top:2px;'>
-                    <a href="{link_wa}" target="_blank"
-                       style="color:#9b8dff; font-size:13px; text-decoration:none; opacity:0.8;">
-                        🔒 Problemas com o acesso? — Falar com o Suporte
-                    </a>
+                <div style='text-align:center;margin-top:8px;'>
+                    <a href="{link_wa}" target="_blank" style="color:#9b8dff;font-size:13px;text-decoration:none;opacity:0.8;">
+                        🔒 Problemas com o acesso? — Falar com o Suporte</a>
                 </div>
-                <div style='text-align:center; margin-top:10px;'>
+                <div style='text-align:center;margin-top:8px;'>
                     <a href="https://finatechlab.com/pagina-vendas-gastei/" target="_blank"
-                       style="color:#64b5f6; font-size:12px; text-decoration:none; opacity:0.65;">
-                        🛒 Ainda não tem acesso? Conheça o Gastei →
-                    </a>
-                </div>
-                """, unsafe_allow_html=True)
-
+                       style="color:#64b5f6;font-size:12px;text-decoration:none;opacity:0.65;">
+                        🛒 Ainda não tem acesso? Conheça o Gastei →</a>
+                </div>""", unsafe_allow_html=True)
                 st.markdown("<br>", unsafe_allow_html=True)
                 with st.expander("🛡️ Termos de Uso e Política de Privacidade"):
-                    st.write("Seus dados financeiros são armazenados de forma criptografada e privativa na nossa infraestrutura do Supabase. Não compartilhamos e nem realizamos leitura de suas informações para qualquer outra finalidade que não seja o seu controle estrito.")
+                    st.write("Seus dados financeiros são armazenados de forma criptografada e privativa. Não compartilhamos suas informações.")
 
             elif st.session_state.reset_step == 1:
-                st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
                 st.info("📧 Informe o e-mail cadastrado. Enviaremos um código de 6 dígitos.")
                 email_reset = st.text_input("E-mail cadastrado", key="reset_email_input", placeholder="seu@email.com")
-                col_enviar, col_voltar = st.columns([1, 1])
-                with col_enviar:
+                col_env, col_vol = st.columns(2)
+                with col_env:
                     if st.button("Enviar código →", key="btn_send_token"):
-                        if not email_valido(email_reset):
-                            st.error("E-mail inválido.")
+                        if not email_valido(email_reset): st.error("E-mail inválido.")
                         else:
-                            rows = run_query(
-                                "SELECT id FROM usuarios WHERE email=%s",
-                                (email_reset.strip().lower(),), fetch=True
-                            )
-                            if not rows:
-                                st.error("E-mail não encontrado.")
+                            rows = run_query("SELECT id FROM usuarios WHERE email=%s", (email_reset.strip().lower(),), fetch=True)
+                            if not rows: st.error("E-mail não encontrado.")
                             else:
-                                token = gerar_token_reset(email_reset)
-                                if token and enviar_email_reset(email_reset, token):
+                                tok = gerar_token_reset(email_reset)
+                                if tok and enviar_email_reset(email_reset, tok):
                                     st.session_state.reset_email = email_reset.strip().lower()
-                                    st.session_state.reset_step  = 2
-                                    st.rerun()
-                with col_voltar:
+                                    st.session_state.reset_step  = 2; st.rerun()
+                with col_vol:
                     if st.button("← Voltar", key="btn_back_1"):
-                        st.session_state.reset_step = 0
-                        st.rerun()
+                        st.session_state.reset_step = 0; st.rerun()
 
             elif st.session_state.reset_step == 2:
-                st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
-                st.success(f"✅ Código enviado para **{st.session_state.reset_email}**. Verifique sua caixa de entrada (e o spam).")
+                st.success(f"✅ Código enviado para **{st.session_state.reset_email}**.")
                 codigo = st.text_input("Código de 6 dígitos", key="reset_token_input", placeholder="123456", max_chars=6)
                 nova1  = st.text_input("Nova senha", type="password", key="reset_pass1", placeholder="Mínimo 6 caracteres")
                 nova2  = st.text_input("Confirmar nova senha", type="password", key="reset_pass2", placeholder="Repita a senha")
-                col_confirmar, col_voltar2 = st.columns([1, 1])
-                with col_confirmar:
+                col_conf, col_vol2 = st.columns(2)
+                with col_conf:
                     if st.button("Redefinir senha →", key="btn_confirm_reset"):
                         erros = []
-                        if not codigo.strip():        erros.append("Informe o código recebido.")
-                        if len(nova1) < 6:            erros.append("A senha deve ter pelo menos 6 caracteres.")
-                        if nova1 != nova2:            erros.append("As senhas não conferem.")
+                        if not codigo.strip(): erros.append("Informe o código.")
+                        if len(nova1) < 6:     erros.append("Mínimo 6 caracteres.")
+                        if nova1 != nova2:     erros.append("Senhas não conferem.")
                         if erros:
                             for e in erros: st.error(e)
                         elif not validar_token_reset(st.session_state.reset_email, codigo):
-                            st.error("Código inválido ou expirado. Solicite um novo.")
+                            st.error("Código inválido ou expirado.")
                         else:
                             if trocar_senha(st.session_state.reset_email, nova1):
                                 consumir_token_reset(st.session_state.reset_email, codigo)
-                                st.success("🎉 Senha redefinida com sucesso! Faça login.")
-                                st.session_state.reset_step  = 0
-                                st.session_state.reset_email = ""
-                                st.rerun()
-                with col_voltar2:
+                                st.success("🎉 Senha redefinida! Faça login.")
+                                st.session_state.reset_step = 0; st.session_state.reset_email = ""; st.rerun()
+                with col_vol2:
                     if st.button("← Voltar", key="btn_back_2"):
-                        st.session_state.reset_step = 1
-                        st.rerun()
+                        st.session_state.reset_step = 1; st.rerun()
 
         with aba_cadastro:
             st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
             nome_cad   = st.text_input("Seu nome",            key="cad_nome",   placeholder="João Silva")
             email_cad  = st.text_input("E-mail",              key="cad_email",  placeholder="O mesmo e-mail usado na compra")
             tel_cad    = st.text_input("WhatsApp / Telefone", key="cad_tel",    placeholder="(67) 99999-9999")
-            senha_cad  = st.text_input("Senha",  type="password", key="cad_senha",  placeholder="Mínimo 6 caracteres")
+            senha_cad  = st.text_input("Senha",           type="password", key="cad_senha",  placeholder="Mínimo 6 caracteres")
             senha_cad2 = st.text_input("Confirmar senha", type="password", key="cad_senha2", placeholder="Repita a senha")
             st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-
             if st.button("Criar minha conta →", key="btn_cadastro"):
                 erros = []
                 if not all([nome_cad, email_cad, tel_cad, senha_cad, senha_cad2]):
-                    erros.append("Preencha todos os campos, incluindo o telefone.")
-                elif not email_valido(email_cad):
-                    erros.append("E-mail inválido.")
-                elif not telefone_valido(tel_cad):
-                    erros.append("Telefone inválido. Use o formato (67) 99999-9999.")
-                elif len(senha_cad) < 6:
-                    erros.append("A senha deve ter pelo menos 6 caracteres.")
-                elif senha_cad != senha_cad2:
-                    erros.append("As senhas não conferem.")
+                    erros.append("Preencha todos os campos.")
+                elif not email_valido(email_cad):  erros.append("E-mail inválido.")
+                elif not telefone_valido(tel_cad): erros.append("Telefone inválido.")
+                elif len(senha_cad) < 6:           erros.append("Senha: mínimo 6 caracteres.")
+                elif senha_cad != senha_cad2:      erros.append("Senhas não conferem.")
                 if erros:
                     for e in erros: st.error(e)
                 else:
                     ok, msg = criar_usuario(nome_cad, email_cad, senha_cad, tel_cad)
-                    if ok: st.success("✅ Conta autorizada e criada! Faça login na aba ao lado.")
+                    if ok: st.success("✅ Conta criada! Faça login na aba ao lado.")
                     else:  st.error(msg)
-
-            st.markdown("""
-            <div style='text-align:center; margin-top:16px;'>
+            st.markdown("""<div style='text-align:center;margin-top:16px;'>
                 <a href="https://finatechlab.com/pagina-vendas-gastei/" target="_blank"
-                   style="color:#64b5f6; font-size:12px; text-decoration:none; opacity:0.65;">
-                    🛒 Ainda não comprou? Conheça os planos do Gastei →
-                </a>
-            </div>
-            """, unsafe_allow_html=True)
+                   style="color:#64b5f6;font-size:12px;text-decoration:none;opacity:0.65;">
+                    🛒 Ainda não comprou? Conheça os planos →</a></div>""", unsafe_allow_html=True)
 
-    # ── Seletor de idioma discreto na tela de login ──
-    st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
-    _idioma_opcoes_login = {"🇧🇷 PT": "PT", "🇺🇸 EN": "EN", "🇫🇷 FR": "FR"}
-    _flags = list(_idioma_opcoes_login.keys())
-    _idx_atual = list(_idioma_opcoes_login.values()).index(st.session_state.lang)
-    _, _lc, _ = st.columns([1, 1.6, 1])
-    with _lc:
-        _lang_sel_login = st.radio(
-            "🌐",
-            options=_flags,
-            index=_idx_atual,
-            horizontal=True,
-            key="lang_radio_login",
-            label_visibility="collapsed"
-        )
-        _nova_lang = _idioma_opcoes_login[_lang_sel_login]
-        if _nova_lang != st.session_state.lang:
-            st.session_state.lang = _nova_lang
-            st.rerun()
     st.stop()
 
 # ═════════════════════════════════════════════
@@ -1249,44 +982,43 @@ if st.session_state.usuario_id is None:
 uid = st.session_state.usuario_id
 st.query_params["s"] = gerar_token_sessao(uid)
 
-# ── Sidebar: idioma + salário ──────────────────
+# ── Sidebar mantida só com atalho para o painel ──
 with st.sidebar:
-    st.markdown("### ⚙️ Preferências")
-    idioma_opcoes = {"Português": "PT", "English": "EN", "Français": "FR"}
-    idioma_sel = st.selectbox(
-        "🌐 Idioma / Language / Langue",
-        options=list(idioma_opcoes.keys()),
-        index=list(idioma_opcoes.values()).index(st.session_state.lang),
-        key="sel_idioma"
+    t = get_t()
+    st.markdown(f"### {t['idioma_label']}")
+    _smap = {"Português": "PT", "English": "EN", "Français": "FR"}
+    _ssel = st.selectbox(
+        t["idioma_label"],
+        options=list(_smap.keys()),
+        index=list(_smap.values()).index(st.session_state.lang),
+        key="sel_idioma_sidebar",
+        label_visibility="collapsed"
     )
-    st.session_state.lang = idioma_opcoes[idioma_sel]
-    t = IDIOMAS[st.session_state.lang]   # atalho global
+    # FIX IDIOMA: atualiza session_state diretamente sem rerun — o widget já dispara rerun do Streamlit
+    st.session_state.lang = _smap[_ssel]
+    t = get_t()  # recarrega após mudança
 
     st.markdown("---")
     st.markdown(f"### {t['salario_titulo']}")
-    novo_salario = st.number_input(
-        t["salario_input"],
-        min_value=0.0, step=100.0, format="%.2f",
+    _sal_sb = st.number_input(
+        t["salario_input"], min_value=0.0, step=100.0, format="%.2f",
         value=float(st.session_state.salario),
-        key="input_salario"
+        key="input_salario_sidebar", label_visibility="collapsed"
     )
-    if st.button("💾 Salvar", key="btn_salvar_salario"):
-        st.session_state.salario = novo_salario
+    if st.button(t["salario_btn"], key="btn_sal_sidebar"):
+        st.session_state.salario = _sal_sb
         st.success(t["salario_salvo"])
 
-# garante que t exista caso o sidebar não tenha sido renderizado ainda
-t = IDIOMAS[st.session_state.lang]
+# ── Recarrega t após possível mudança na sidebar ──
+t = get_t()
 
-# ── Header ────────────────────────────────────
-if "pref_aberto" not in st.session_state:
-    st.session_state.pref_aberto = False
-
-col_titulo, col_usuario, col_pref, col_logout = st.columns([5, 2, 0.6, 0.7])
+# ── Header ──────────────────────────────────────
+col_titulo, col_usuario, col_pref, col_logout = st.columns([5, 2, 0.6, 0.8])
 with col_titulo:
     st.markdown("# GASTEI ⚡")
-    st.markdown(f"<p style='color:#6b7280; margin-top:-12px; margin-bottom:28px;'>{t['app_subtitle']}</p>", unsafe_allow_html=True)
+    st.markdown(f"<p style='color:#6b7280;margin-top:-12px;margin-bottom:28px;'>{t['app_subtitle']}</p>", unsafe_allow_html=True)
 with col_usuario:
-    st.markdown(f"<div style='text-align:right; padding-top:18px; font-size:13px; color:#9ca3af;'>{t['ola']}, <strong style='color:#c4b5fd'>{st.session_state.usuario_nome}</strong> 👋</div>", unsafe_allow_html=True)
+    st.markdown(f"<div style='text-align:right;padding-top:18px;font-size:13px;color:#9ca3af;'>{t['ola']}, <strong style='color:#c4b5fd'>{st.session_state.usuario_nome}</strong> 👋</div>", unsafe_allow_html=True)
 with col_pref:
     st.markdown("<div style='padding-top:14px'></div>", unsafe_allow_html=True)
     st.markdown('<div class="pref-btn">', unsafe_allow_html=True)
@@ -1298,113 +1030,82 @@ with col_logout:
     st.markdown("<div style='padding-top:14px'></div>", unsafe_allow_html=True)
     st.markdown('<div class="logout-btn">', unsafe_allow_html=True)
     if st.button(t["sair"], key="btn_logout"):
-        st.session_state.usuario_id   = None
-        st.session_state.usuario_nome = None
-        st.query_params.clear()
-        st.rerun()
+        for k in ["usuario_id","usuario_nome","salario","pref_aberto"]:
+            st.session_state[k] = None if k in ("usuario_id","usuario_nome") else (False if k == "pref_aberto" else 0.0)
+        st.query_params.clear(); st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
 
-# ── Painel inline de preferências ─────────────
+# ── Painel ⚙️ inline ─────────────────────────────
 if st.session_state.pref_aberto:
     st.markdown('<div class="pref-panel">', unsafe_allow_html=True)
-    _pc1, _pc2, _pc3 = st.columns([1.2, 1.5, 1])
+    _pc1, _pc2, _pc3 = st.columns([1.2, 1.5, 0.6])
     with _pc1:
-        st.markdown(f"<p style='color:#9b8dff; font-size:12px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; margin-bottom:6px;'>🌐 Idioma</p>", unsafe_allow_html=True)
-        _idioma_opcoes = {"Português": "PT", "English": "EN", "Français": "FR"}
-        _idx = list(_idioma_opcoes.values()).index(st.session_state.lang)
-        _sel_lang = st.radio(
-            "lang_inline",
-            options=list(_idioma_opcoes.keys()),
-            index=_idx,
-            key="lang_radio_inline",
-            label_visibility="collapsed"
-        )
-        _new_lang = _idioma_opcoes[_sel_lang]
-        if _new_lang != st.session_state.lang:
-            st.session_state.lang = _new_lang
-            t = IDIOMAS[_new_lang]
-            st.rerun()
+        st.markdown(f"<p style='color:#9b8dff;font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:6px;'>{t['idioma_label']}</p>", unsafe_allow_html=True)
+        _pmap = {"Português": "PT", "English": "EN", "Français": "FR"}
+        _psel = st.radio("lang_panel", options=list(_pmap.keys()),
+                         index=list(_pmap.values()).index(st.session_state.lang),
+                         key="lang_radio_panel", label_visibility="collapsed")
+        # FIX: atualiza direto, sem rerun() — o próprio radio já dispara rerun
+        st.session_state.lang = _pmap[_psel]
+        t = get_t()
     with _pc2:
-        st.markdown(f"<p style='color:#9b8dff; font-size:12px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; margin-bottom:6px;'>💰 {t['salario_titulo']}</p>", unsafe_allow_html=True)
-        _novo_sal = st.number_input(
-            t["salario_input"],
-            min_value=0.0, step=100.0, format="%.2f",
+        st.markdown(f"<p style='color:#9b8dff;font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:6px;'>💰 {t['salario_titulo']}</p>", unsafe_allow_html=True)
+        _sal_p = st.number_input(
+            t["salario_input"], min_value=0.0, step=100.0, format="%.2f",
             value=float(st.session_state.salario),
-            key="sal_inline",
-            label_visibility="collapsed"
+            key="sal_panel", label_visibility="collapsed"
         )
-        if st.button(f"💾 {t['salario_salvo'].replace('✅ ', '')}", key="btn_sal_inline"):
-            st.session_state.salario = _novo_sal
+        if st.button(t["salario_btn"], key="btn_sal_panel"):
+            st.session_state.salario = _sal_p
             st.success(t["salario_salvo"])
     with _pc3:
-        st.markdown("<p style='color:#6b7280; font-size:11px; margin-top:24px;'>" +
-            ("Fechar painel" if st.session_state.lang == "PT" else
-             "Close panel"  if st.session_state.lang == "EN" else
-             "Fermer") + "</p>", unsafe_allow_html=True)
-        if st.button("✕", key="btn_pref_close"):
-            st.session_state.pref_aberto = False
-            st.rerun()
+        st.markdown("<div style='padding-top:26px'></div>", unsafe_allow_html=True)
+        if st.button(f"✕ {t['pref_fechar']}", key="btn_pref_close"):
+            st.session_state.pref_aberto = False; st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
 
+# ── Abas principais ─────────────────────────────
 aba_principal, aba_feedback = st.tabs([t["aba_gastos"], t["aba_feedback"]])
 
 # ══════════════════════════════
 # ABA 1 — GASTOS
 # ══════════════════════════════
 with aba_principal:
-    df_all = carregar_lancamentos(uid)
+    df_all       = carregar_lancamentos(uid)
     total_saidas = df_all["valor_total"].astype(float).sum() if not df_all.empty else 0.0
     gasto_mensal = calcular_gasto_mensal(df_all) if not df_all.empty else 0.0
     salario      = float(st.session_state.salario)
 
-    # ── Cards de resumo (3 colunas) ────────────
+    # ── 3 cards de resumo ──────────────────────
     col_a, col_b, col_c = st.columns(3)
     with col_a:
-        st.markdown(f"""
-        <div class="total-card">
-            <div>
-                <div class="total-label">{t['total_saidas']}</div>
-                <div class="total-value">R$ {total_saidas:,.2f}</div>
-            </div>
-            <div class="total-icon">📊</div>
-        </div>""", unsafe_allow_html=True)
-
+        st.markdown(f"""<div class="total-card">
+            <div><div class="total-label">{t['total_saidas']}</div>
+                 <div class="total-value">R$ {total_saidas:,.2f}</div></div>
+            <div class="total-icon">📊</div></div>""", unsafe_allow_html=True)
     with col_b:
-        st.markdown(f"""
-        <div class="parcela-card">
-            <div>
-                <div class="parcela-label">{t['comprometido_mes']}</div>
-                <div class="parcela-value">R$ {gasto_mensal:,.2f}</div>
-            </div>
-            <div style="font-size:48px;opacity:0.4;">📅</div>
-        </div>""", unsafe_allow_html=True)
-
+        st.markdown(f"""<div class="parcela-card">
+            <div><div class="parcela-label">{t['comprometido_mes']}</div>
+                 <div class="parcela-value">R$ {gasto_mensal:,.2f}</div></div>
+            <div style="font-size:48px;opacity:0.4;">📅</div></div>""", unsafe_allow_html=True)
     with col_c:
         if salario > 0:
-            pct = (gasto_mensal / salario) * 100
-            card_class = "salario-card alerta" if pct >= 70 else "salario-card"
+            pct  = (gasto_mensal / salario) * 100
+            cls  = "salario-card alerta" if pct >= 70 else "salario-card"
             icon = "🚨" if pct >= 70 else "💰"
-            st.markdown(f"""
-            <div class="{card_class}">
-                <div>
-                    <div class="salario-label">{t['salario_comprometido']}</div>
-                    <div class="salario-value">{pct:.1f}%</div>
-                    <div style="font-size:11px; color:#6b7280; margin-top:4px;">{t['pct_label']}</div>
-                </div>
-                <div style="font-size:48px;opacity:0.5;">{icon}</div>
-            </div>""", unsafe_allow_html=True)
+            st.markdown(f"""<div class="{cls}">
+                <div><div class="salario-label">{t['salario_comprometido']}</div>
+                     <div class="salario-value">{pct:.1f}%</div>
+                     <div style="font-size:11px;color:#6b7280;margin-top:4px;">{t['pct_label']}</div></div>
+                <div style="font-size:48px;opacity:0.5;">{icon}</div></div>""", unsafe_allow_html=True)
         else:
-            st.markdown(f"""
-            <div class="salario-card" style="opacity:0.55;">
-                <div>
-                    <div class="salario-label">{t['salario_comprometido']}</div>
-                    <div class="salario-value">--%</div>
-                </div>
-                <div style="font-size:48px;opacity:0.3;">💰</div>
-            </div>""", unsafe_allow_html=True)
+            st.markdown(f"""<div class="salario-card" style="opacity:0.55;">
+                <div><div class="salario-label">{t['salario_comprometido']}</div>
+                     <div class="salario-value">--%</div></div>
+                <div style="font-size:48px;opacity:0.3;">💰</div></div>""", unsafe_allow_html=True)
             st.caption(t["salario_zero_aviso"])
 
-    # ── Formulário de novo lançamento ──────────
+    # ── Formulário novo lançamento + simulação em tempo real ──
     st.markdown(f"### {t['novo_lancamento']}")
     with st.container():
         st.markdown('<div class="form-section">', unsafe_allow_html=True)
@@ -1412,7 +1113,7 @@ with aba_principal:
         with col1:
             descricao = st.text_input(t["o_que_comprou"], placeholder=t["placeholder_desc"])
         with col2:
-            valor_total = st.number_input(t["valor_total"], min_value=0.01, step=0.01, format="%.2f")
+            valor_total = st.number_input(t["valor_total"], min_value=0.0, step=0.01, format="%.2f", value=0.0)
 
         is_recorrente = st.checkbox(t["conta_fixa"])
 
@@ -1420,8 +1121,7 @@ with aba_principal:
             col4, _ = st.columns([1, 2])
             with col4:
                 inicio_pagamento = st.date_input(t["dia_vencimento"], value=date.today(), format="DD/MM/YYYY")
-            parcelas_totais = 0
-            final_pagamento = None
+            parcelas_totais = 0; final_pagamento = None
             if descricao and valor_total > 0:
                 proxima_rec = calcular_proxima_recorrente(inicio_pagamento)
                 st.markdown("<hr>", unsafe_allow_html=True)
@@ -1444,6 +1144,24 @@ with aba_principal:
                 with pc2: st.markdown(f"{t['parcelas_restantes']} `{parcelas_totais}x`")
                 with pc3: st.markdown(f"{t['venc_parcela1']} `{inicio_pagamento.strftime('%d/%m/%Y')}`")
 
+        # ── SIMULAÇÃO EM TEMPO REAL (dentro do formulário) ──────────────
+        if valor_total > 0 and salario > 0:
+            parc_sim     = parcelas_totais if (parcelas_totais and not is_recorrente) else 1
+            mensal_novo  = valor_total / parc_sim if parc_sim > 0 else valor_total
+            total_sim    = gasto_mensal + mensal_novo
+            pct_sim      = (total_sim / salario) * 100
+            st.markdown(t["sim_info"].format(total_sim, pct_sim))
+            if pct_sim > 70:
+                st.markdown(f"""<div class="alerta-simulacao">
+                    <span class="pct-destaque">⚠️ {pct_sim:.1f}%</span>
+                    {t["sim_alerta"].format(pct_sim)}
+                </div>""", unsafe_allow_html=True)
+            else:
+                st.success(t["sim_ok"])
+        elif valor_total > 0 and salario == 0:
+            st.caption(t["salario_zero_aviso"])
+        # ────────────────────────────────────────────────────────────────
+
         col_btn, _ = st.columns([1, 3])
         with col_btn:
             if st.button(t["salvar_lancamento"]):
@@ -1453,46 +1171,17 @@ with aba_principal:
                 if erros:
                     for e in erros: st.error(e)
                 else:
-                    inserir_lancamento(uid, descricao.strip(), valor_total, parcelas_totais, inicio_pagamento, final_pagamento, is_recorrente)
+                    inserir_lancamento(uid, descricao.strip(), valor_total, parcelas_totais,
+                                       inicio_pagamento, final_pagamento, is_recorrente)
                     st.success(t["salvo_sucesso"].format(descricao))
                     st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # ── Simulador de Gasto ─────────────────────
-    st.markdown(t["simulacao_titulo"])
-    with st.container():
-        st.markdown('<div class="form-section">', unsafe_allow_html=True)
-        st.markdown(f"<p style='color:#9ca3af; margin-top:-8px;'>{t['simulacao_desc']}</p>", unsafe_allow_html=True)
-        sim_col1, sim_col2 = st.columns([2, 1])
-        with sim_col1:
-            sim_valor = st.number_input(t["sim_valor"], min_value=0.0, step=10.0, format="%.2f", key="sim_val")
-        with sim_col2:
-            sim_parcelas = st.number_input(t["sim_parcelas"], min_value=1, max_value=360, step=1, value=1, key="sim_parc")
-
-        if sim_valor > 0:
-            sim_mensal = sim_valor / sim_parcelas
-            total_com_sim = gasto_mensal + sim_mensal
-            if salario > 0:
-                pct_sim = (total_com_sim / salario) * 100
-                st.markdown(t["sim_resultado"].format(total_com_sim, pct_sim))
-                if pct_sim > 70:
-                    st.markdown(f"""
-                    <div class="alerta-simulacao">
-                        <span class="pct-destaque">⚠️ {pct_sim:.1f}%</span>
-                        {t["sim_alerta"].format(pct_sim)}
-                    </div>""", unsafe_allow_html=True)
-                else:
-                    st.success(t["sim_ok"])
-            else:
-                st.markdown(t["sim_resultado"].format(total_com_sim, 0.0))
-                st.caption(t["salario_zero_aviso"])
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    # ── Histórico de lançamentos ───────────────
+    # ── Histórico ──────────────────────────────
     st.markdown(t["historico"])
     df = carregar_lancamentos(uid)
     if df.empty:
-        st.markdown(f"<div style='text-align:center; padding:60px 20px; color:#4b5563;'><div style='font-size:48px;'>📭</div>{t['nenhum_lancamento']}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='text-align:center;padding:60px 20px;color:#4b5563;'><div style='font-size:48px;'>📭</div>{t['nenhum_lancamento']}</div>", unsafe_allow_html=True)
     else:
         busca = st.text_input(t["filtrar"], placeholder=t["placeholder_busca"], key="busca")
         if busca.strip():
@@ -1501,63 +1190,51 @@ with aba_principal:
         hoje = date.today()
         df["_pago"] = df["pago"].astype(bool)
         df["_rec"]  = df["recorrente"].astype(int) == 1
-        df["_venc"] = df.apply(
-            lambda r: calcular_proxima_recorrente(to_date(r["inicio_pagamento"]))
-                      if r["_rec"] else to_date(r["inicio_pagamento"]),
-            axis=1
-        )
+        df["_venc"] = df.apply(lambda r: calcular_proxima_recorrente(to_date(r["inicio_pagamento"]))
+                                if r["_rec"] else to_date(r["inicio_pagamento"]), axis=1)
         def _grp(row):
-            if row["_pago"]:                              return (4, date(9999,12,31))
+            if row["_pago"]: return (4, date(9999,12,31))
             v = row["_venc"]
-            if v < hoje:                                  return (0, v)
-            if v == hoje:                                 return (1, v)
-            if v <= hoje + timedelta(days=3):             return (2, v)
+            if v < hoje:                          return (0, v)
+            if v == hoje:                         return (1, v)
+            if v <= hoje + timedelta(days=3):     return (2, v)
             return (3, v)
         df["_sort"] = df.apply(_grp, axis=1)
-        df = df.sort_values("_sort").drop(columns=["_pago", "_rec", "_venc", "_sort"])
+        df = df.sort_values("_sort").drop(columns=["_pago","_rec","_venc","_sort"])
 
-        # ── banners de alerta ──────────────────
-        df_alerta = carregar_lancamentos(uid)
-        if not df_alerta.empty:
-            _hoje = date.today()
-            _venc_col = df_alerta.apply(
-                lambda r: calcular_proxima_recorrente(to_date(r["inicio_pagamento"]))
-                          if int(r["recorrente"]) == 1 else to_date(r["inicio_pagamento"]),
-                axis=1
-            )
-            _ativos      = ~df_alerta["pago"].astype(bool)
-            n_atrasadas  = int((_ativos & (_venc_col < _hoje)).sum())
-            n_hoje       = int((_ativos & (_venc_col == _hoje)).sum())
-            n_breve      = int((_ativos & (_venc_col > _hoje) & (_venc_col <= _hoje + timedelta(days=3))).sum())
+        # ── Banners de alerta ──
+        _ativos   = ~df["pago"].astype(bool)
+        _vc       = df.apply(lambda r: calcular_proxima_recorrente(to_date(r["inicio_pagamento"]))
+                             if int(r["recorrente"]) == 1 else to_date(r["inicio_pagamento"]), axis=1)
+        n_atr  = int((_ativos & (_vc < hoje)).sum())
+        n_hj   = int((_ativos & (_vc == hoje)).sum())
+        n_brv  = int((_ativos & (_vc > hoje) & (_vc <= hoje + timedelta(days=3))).sum())
 
-            if n_atrasadas:
-                pl = t["conta_atrasada_s"] if n_atrasadas == 1 else t["conta_atrasada_p"]
-                st.markdown(f"""
-                <div class="alerta-banner">
-                    🚨 <span class="count">{n_atrasadas}</span> {t['alerta_atrasada'].format(n_atrasadas, pl).split('🚨 ')[1]}
-                </div>""", unsafe_allow_html=True)
-            if n_hoje:
-                pl = t["conta_hoje_s"] if n_hoje == 1 else t["conta_hoje_p"]
-                st.markdown(f"""
-                <div class="hoje-banner">
-                    🔥 <span style="background:#f97316;color:#fff;border-radius:999px;padding:1px 8px;font-weight:800;">{n_hoje}</span> {pl} — {t['alerta_hoje'].split('🔥 ')[1].split(' — ')[1]}
-                </div>""", unsafe_allow_html=True)
-            if n_breve and not n_atrasadas and not n_hoje:
-                pl = t["conta_breve_s"] if n_breve == 1 else t["conta_breve_p"]
-                st.markdown(f"""
-                <div style="display:flex;align-items:center;gap:8px;background:rgba(234,179,8,0.09);border:1px solid rgba(234,179,8,0.3);border-radius:10px;padding:7px 14px;font-size:11px;font-weight:700;color:#fde047;margin-bottom:8px;">
-                    ⚡ {n_breve} {pl} {t['alerta_breve'].split('⚡ ')[1].split(str(n_breve)+' ')[1] if str(n_breve)+' ' in t['alerta_breve'] else 'nos próximos 3 dias'}
-                </div>""", unsafe_allow_html=True)
+        if n_atr:
+            pl = t["conta_atrasada_s"] if n_atr == 1 else t["conta_atrasada_p"]
+            st.markdown(f"""<div class="alerta-banner">
+                🚨 <span class="count">{n_atr}</span> {pl} — {t['alerta_atrasada_sufixo']}
+            </div>""", unsafe_allow_html=True)
+        if n_hj:
+            pl = t["conta_hoje_s"] if n_hj == 1 else t["conta_hoje_p"]
+            st.markdown(f"""<div class="hoje-banner">
+                🔥 <span style="background:#f97316;color:#fff;border-radius:999px;padding:1px 8px;font-weight:800;">{n_hj}</span>
+                {pl} — {t['alerta_hoje_sufixo']}
+            </div>""", unsafe_allow_html=True)
+        if n_brv and not n_atr and not n_hj:
+            pl = t["conta_breve_s"] if n_brv == 1 else t["conta_breve_p"]
+            st.markdown(f"""<div style="display:flex;align-items:center;gap:8px;background:rgba(234,179,8,0.09);
+                border:1px solid rgba(234,179,8,0.3);border-radius:10px;padding:7px 14px;
+                font-size:11px;font-weight:700;color:#fde047;margin-bottom:8px;">
+                ⚡ {n_brv} {pl} — {t['alerta_breve_sufixo']}
+            </div>""", unsafe_allow_html=True)
 
-        st.markdown(f"""
-        <div style="display:grid; grid-template-columns: 2.2fr 1fr 1fr 1fr 0.8fr; padding:10px 24px; font-size:11px; font-weight:700; color:#6b7280; text-transform:uppercase; letter-spacing:1px;">
-            <div>{t['col_descricao']}</div>
-            <div>{t['col_valor']}</div>
-            <div>{t['col_vencimento']}</div>
-            <div>{t['col_situacao']}</div>
+        st.markdown(f"""<div style="display:grid;grid-template-columns:2.2fr 1fr 1fr 1fr 0.8fr;
+            padding:10px 24px;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:1px;">
+            <div>{t['col_descricao']}</div><div>{t['col_valor']}</div>
+            <div>{t['col_vencimento']}</div><div>{t['col_situacao']}</div>
             <div style="text-align:center">{t['col_acoes']}</div>
-        </div>
-        """, unsafe_allow_html=True)
+        </div>""", unsafe_allow_html=True)
 
         for _, row in df.iterrows():
             id_           = row["id"]
@@ -1565,39 +1242,19 @@ with aba_principal:
             v_tot         = float(row["valor_total"])
             parc_tot      = int(row["parcelas_totais"])
             parc_pagas    = int(row.get("parcelas_pagas", 0))
-            parc_restantes = max(0, parc_tot - parc_pagas)
+            parc_rest     = max(0, parc_tot - parc_pagas)
             eh_fixa       = int(row["recorrente"]) == 1
             pago_fim      = bool(row["pago"])
-
-            if eh_fixa:
-                val_exibir = v_tot
-                venc_data  = calcular_proxima_recorrente(to_date(row["inicio_pagamento"]))
-            else:
-                val_exibir = calcular_valor_parcela(v_tot, parc_tot)
-                venc_data  = to_date(row["inicio_pagamento"])
-
-            classe_row = "lancamento-row"
-            if pago_fim:
-                classe_row += " pago"
-            elif venc_data < hoje:
-                classe_row += " urgente"
-            elif venc_data == hoje:
-                classe_row += " hoje"
-            elif venc_data <= hoje + timedelta(days=3):
-                classe_row += " em-breve"
-            elif eh_fixa:
-                classe_row += " fixa"
+            val_exibir    = v_tot if eh_fixa else calcular_valor_parcela(v_tot, parc_tot)
+            venc_data     = calcular_proxima_recorrente(to_date(row["inicio_pagamento"])) if eh_fixa else to_date(row["inicio_pagamento"])
 
             col_r1, col_r2, col_r3, col_r4, col_r5 = st.columns([2.2, 1, 1, 1, 0.8])
-
             with col_r1:
-                sub_desc = f"{t['total_label']} R$ {v_tot:,.2f} · {t['inicio_label']} {to_date(row['inicio_pagamento']).strftime('%d/%m/%Y')}" if not eh_fixa else t["conta_mensal_fixa"]
-                st.markdown(f"<div style='padding-top:12px'><strong style='color:#fff; font-size:15px;'>{desc}</strong><br><span style='color:#6b7280; font-size:11px;'>{sub_desc}</span></div>", unsafe_allow_html=True)
-
+                sub = f"{t['total_label']} R$ {v_tot:,.2f} · {t['inicio_label']} {to_date(row['inicio_pagamento']).strftime('%d/%m/%Y')}" if not eh_fixa else t["conta_mensal_fixa"]
+                st.markdown(f"<div style='padding-top:12px'><strong style='color:#fff;font-size:15px;'>{desc}</strong><br><span style='color:#6b7280;font-size:11px;'>{sub}</span></div>", unsafe_allow_html=True)
             with col_r2:
-                label_p = t["label_mensal"] if eh_fixa else t["label_parcela"]
-                st.markdown(f"<div style='padding-top:12px'><strong style='font-family:JetBrains Mono; color:#9b8dff; font-size:16px;'>R$ {val_exibir:,.2f}</strong><br><span style='color:#6b7280; font-size:11px;'>{label_p}</span></div>", unsafe_allow_html=True)
-
+                lbl = t["label_mensal"] if eh_fixa else t["label_parcela"]
+                st.markdown(f"<div style='padding-top:12px'><strong style='font-family:JetBrains Mono;color:#9b8dff;font-size:16px;'>R$ {val_exibir:,.2f}</strong><br><span style='color:#6b7280;font-size:11px;'>{lbl}</span></div>", unsafe_allow_html=True)
             with col_r3:
                 if pago_fim:
                     st.markdown("<div style='padding-top:18px'><span class='badge-pago'>Concluído ✅</span></div>", unsafe_allow_html=True)
@@ -1606,89 +1263,65 @@ with aba_principal:
                 elif venc_data < hoje:
                     st.markdown(f"<div style='padding-top:18px'><span class='badge-urgente'>⚠️ ATRASADO ({venc_data.strftime('%d/%m/%Y')})</span></div>", unsafe_allow_html=True)
                 elif venc_data <= hoje + timedelta(days=3):
-                    dias_r = (venc_data - hoje).days
-                    txt_r  = f"em {dias_r}d" if dias_r > 0 else "hoje"
-                    st.markdown(f"<div style='padding-top:18px'><span class='badge-em-breve'>⚡ {venc_data.strftime('%d/%m/%Y')} ({txt_r})</span></div>", unsafe_allow_html=True)
+                    dr = (venc_data - hoje).days
+                    st.markdown(f"<div style='padding-top:18px'><span class='badge-em-breve'>⚡ {venc_data.strftime('%d/%m/%Y')} (em {dr}d)</span></div>", unsafe_allow_html=True)
                 else:
                     st.markdown(f"<div style='padding-top:18px'><span class='badge-vence'>📅 {venc_data.strftime('%d/%m/%Y')}</span></div>", unsafe_allow_html=True)
-
             with col_r4:
                 if pago_fim:
-                    st.markdown(f"<div style='padding-top:18px; color:#4b5563; font-size:13px;'>{t['divida_encerrada']}</div>", unsafe_allow_html=True)
+                    st.markdown(f"<div style='padding-top:18px;color:#4b5563;font-size:13px;'>{t['divida_encerrada']}</div>", unsafe_allow_html=True)
                 elif eh_fixa:
                     st.markdown(f"<div style='padding-top:18px'><span class='badge-fixa'>{t['recorrente_inf']}</span></div>", unsafe_allow_html=True)
                 else:
                     try:
-                        meses_para_fim = max(0, parc_restantes - 1)
-                        dia_u = venc_data.day
-                        mes_u = (venc_data.month + meses_para_fim - 1) % 12 + 1
-                        ano_u = venc_data.year + ((venc_data.month + meses_para_fim - 1) // 12)
-                        try:
-                            data_ultima_parc = date(ano_u, mes_u, dia_u)
-                        except ValueError:
-                            data_ultima_parc = date(ano_u, mes_u, calendar.monthrange(ano_u, mes_u)[1])
-                        txt_ultima = data_ultima_parc.strftime('%d/%m/%Y')
-                    except:
-                        txt_ultima = "--/--/----"
-                    falta_pagar = max(0.0, v_tot - (parc_pagas * val_exibir))
-                    st.markdown(f"""
-                    <div style='padding-top:4px'>
-                        <span class='badge-parcelas'>{parc_restantes}x {t['x_restantes']}</span><br>
-                        <span style='color:#6b7280; font-size:11px; display:block; margin-top:2px;'>{t['ultima_parcela']} <strong style='color:#90cdf4;'>{txt_ultima}</strong></span>
-                        <span style='color:#6b7280; font-size:10px; display:block;'>{t['falta_pagar']} R$ {falta_pagar:,.2f}</span>
-                    </div>
-                    """, unsafe_allow_html=True)
-
+                        mf = max(0, parc_rest - 1)
+                        du = venc_data.day
+                        mu = (venc_data.month + mf - 1) % 12 + 1
+                        au = venc_data.year + ((venc_data.month + mf - 1) // 12)
+                        try:    dup = date(au, mu, du)
+                        except: dup = date(au, mu, calendar.monthrange(au, mu)[1])
+                        txt_u = dup.strftime('%d/%m/%Y')
+                    except: txt_u = "--/--/----"
+                    falta = max(0.0, v_tot - (parc_pagas * val_exibir))
+                    st.markdown(f"""<div style='padding-top:4px'>
+                        <span class='badge-parcelas'>{parc_rest}x {t['x_restantes']}</span><br>
+                        <span style='color:#6b7280;font-size:11px;display:block;margin-top:2px;'>{t['ultima_parcela']} <strong style='color:#90cdf4;'>{txt_u}</strong></span>
+                        <span style='color:#6b7280;font-size:10px;display:block;'>{t['falta_pagar']} R$ {falta:,.2f}</span>
+                    </div>""", unsafe_allow_html=True)
             with col_r5:
-                st.markdown("<div style='padding-top:6px; display:flex; flex-direction:column; gap:4px;'>", unsafe_allow_html=True)
                 if not pago_fim:
-                    c_pagar  = f"btn_p_{id_}"
-                    c_quitar = f"btn_q_{id_}"
                     st.markdown('<div class="btn-pagar">', unsafe_allow_html=True)
-                    if st.button(t["btn_pagar"], key=c_pagar):
-                        if eh_fixa:
-                            avancar_parcela_recorrente(id_, row["inicio_pagamento"])
-                        else:
-                            avancar_parcela_parcelada_excel(id_, row["inicio_pagamento"], parc_tot, parc_pagas)
+                    if st.button(t["btn_pagar"], key=f"btn_p_{id_}"):
+                        if eh_fixa: avancar_parcela_recorrente(id_, row["inicio_pagamento"])
+                        else: avancar_parcela_parcelada_excel(id_, row["inicio_pagamento"], parc_tot, parc_pagas)
                         st.rerun()
                     st.markdown('</div>', unsafe_allow_html=True)
                     st.markdown('<div class="btn-quitar">', unsafe_allow_html=True)
-                    if st.button(t["btn_quitar"], key=c_quitar):
-                        marcar_pago(id_)
-                        st.rerun()
+                    if st.button(t["btn_quitar"], key=f"btn_q_{id_}"):
+                        marcar_pago(id_); st.rerun()
                     st.markdown('</div>', unsafe_allow_html=True)
                 else:
                     if st.button(t["btn_excluir"], key=f"btn_del_{id_}"):
-                        excluir_lancamento(id_)
-                        st.rerun()
-                st.markdown("</div>", unsafe_allow_html=True)
+                        excluir_lancamento(id_); st.rerun()
 
-        st.markdown(f"<br><br><center style='color:#4b5563; font-size:12px;'>{t['rodape']}</center>", unsafe_allow_html=True)
+        st.markdown(f"<br><br><center style='color:#4b5563;font-size:12px;'>{t['rodape']}</center>", unsafe_allow_html=True)
 
 # ══════════════════════════════
 # ABA 2 — FEEDBACK
 # ══════════════════════════════
 with aba_feedback:
+    t = get_t()
     st.markdown(t["feedback_titulo"])
-    st.markdown(f"<p style='color:#9ca3af; margin-top:-10px;'>{t['feedback_sub']}</p>", unsafe_allow_html=True)
-
+    st.markdown(f"<p style='color:#9ca3af;margin-top:-10px;'>{t['feedback_sub']}</p>", unsafe_allow_html=True)
     with st.container():
         st.markdown('<div class="form-section">', unsafe_allow_html=True)
-        mensagem_fb = st.text_area(
-            t["feedback_label"],
-            placeholder=t["feedback_placeholder"],
-            height=160,
-            key="feedback_texto"
-        )
+        mensagem_fb = st.text_area(t["feedback_label"], placeholder=t["feedback_placeholder"], height=160, key="feedback_texto")
         col_fb, _ = st.columns([1, 3])
         with col_fb:
             if st.button(t["feedback_btn"], key="btn_feedback"):
-                if not mensagem_fb.strip():
-                    st.error(t["feedback_vazio"])
-                elif len(mensagem_fb.strip()) < 8:
-                    st.error(t["feedback_curto"])
+                if not mensagem_fb.strip():       st.error(t["feedback_vazio"])
+                elif len(mensagem_fb.strip()) < 8: st.error(t["feedback_curto"])
                 else:
                     if inserir_feedback(uid, mensagem_fb):
-                        st.success(t["feedback_ok"])
-                        st.balloons()
+                        st.success(t["feedback_ok"]); st.balloons()
         st.markdown('</div>', unsafe_allow_html=True)
