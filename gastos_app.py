@@ -222,6 +222,7 @@ IDIOMAS = {
         
     },
     "EN": {
+        "link_esqueceu": "🔑 I forgot my Password",
         "holder_email": "my@email.com",
         "input_senha": "Password",
         "input_nova_senha": "New Password",
@@ -342,6 +343,8 @@ IDIOMAS = {
         "sucesso_conta_criada": "✅ Account created! Login in the next tab.",
     },
     "FR": {
+        "link_esqueceu": "🔑 j'ai oublié mon mot de passe",
+        "holder_email": "mon@email.com",
         "input_senha": "Mot de passe",
         "input_nova_senha": "Nouveau mot de passe",
         "input_confirmar_nova": "Confirmer le mot de passe",
