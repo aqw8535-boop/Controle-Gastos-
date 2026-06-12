@@ -12,6 +12,39 @@ import smtplib
 import secrets as _secrets
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+import streamlit as st
+
+# 1. Garante que o idioma padrão seja Português caso o app acabe de abrir
+if 'lang' not in st.session_state:
+    st.session_state['lang'] = 'PT'
+
+# 2. O dicionário com as traduções (adicione os seus textos aqui dentro)
+IDIOMAS = {
+    'PT': {
+        'titulo': 'App Gastei 🚀',
+        'subtitulo': 'Seu controle financeiro cyberpunk',
+        'alerta': '⚠️ TEM CERTEZA QUE QUER FAZER ESTA CONTA? {porcentagem}% DO SEU SALÁRIO ESTARÁ COMPROMETIDO...',
+        'seletor_idioma': 'Escolha o Idioma'
+    },
+    'EN': {
+        'titulo': 'Gastei App 🚀',
+        'subtitulo': 'Your cyberpunk financial control',
+        'alerta': '⚠️ ARE YOU SURE YOU WANT TO MAKE THIS EXPENSE? {porcentagem}% OF YOUR SALARY WILL BE COMMITTED...',
+        'seletor_idioma': 'Choose Language'
+    },
+    'FR': {
+        'titulo': 'App Gastei 🚀',
+        'subtitulo': 'Votre contrôle financier cyberpunk',
+        'alerta': '⚠️ ÊTES-VOUS SÛR DE VOULOIR FAIRE CETTE DÉPENSE? {porcentagem}% DE VOTRE SALAIRE SERA ENGAGÉ...',
+        'seletor_idioma': 'Choisir la langue'
+    }
+}
+
+# Função rápida que roda no segundo em que o usuário clica no seletor
+def mudar_idioma():
+    mapeamento = {"Português": "PT", "English": "EN", "Français": "FR"}
+    # Atualiza o estado global com a escolha atual do componente
+    st.session_state['lang'] = mapeamento[st.session_state['seletor_visual']]
 
 # ─────────────────────────────────────────────
 #  CONFIG DA PÁGINA
@@ -1044,11 +1077,22 @@ with st.sidebar:
     st.markdown(f"### {t['idioma_label']}")
     _smap = {"Português": "PT", "English": "EN", "Français": "FR"}
     _ssel = st.selectbox(
-        t["idioma_label"],
-        options=list(_smap.keys()),
-        index=list(_smap.values()).index(st.session_state.lang),
-        key="seletor_idioma",        # chave estática — mesma do login; persiste entre reruns
-        label_visibility="collapsed"
+       # Descobre qual é o índice do idioma atual para o seletor não resetar visualmente
+lista_idiomas = ["Português", "English", "Français"]
+mapeamento_reverso = {"PT": 0, "EN": 1, "FR": 2}
+indice_atual = mapeamento_reverso.get(st.session_state['lang'], 0)
+
+# O Seletor blindado
+idioma_escolhido = st.sidebar.selectbox(
+    "Idioma / Language / Langue", # Texto fixo ou dinâmico
+    options=lista_idiomas,
+    index=indice_atual,
+    key="seletor_visual",      # Chave única para o Streamlit monitorar
+    on_change=mudar_idioma     # O GATILHO: Executa a função imediatamente ao clicar
+)
+
+# Cria o atalho 't' para você usar nos seus textos abaixo
+t = IDIOMAS[st.session_state['lang']]
     )
     _novo_lang = _smap[_ssel]
     if _novo_lang != st.session_state.lang:
