@@ -34,17 +34,30 @@ st.markdown("""
 #  SESSION STATE — inicializa ANTES de tudo
 # ─────────────────────────────────────────────
 _SS_DEFAULTS = {
-    "usuario_id":   None,
-    "usuario_nome": None,
-    "lang":         "PT",
-    "salario":      0.0,
-    "pref_aberto":  False,
-    "reset_step":   0,
-    "reset_email":  "",
+    "usuario_id":        None,
+    "usuario_nome":      None,
+    "lang":              "PT",
+    "salario":           0.0,
+    "pref_aberto":       False,
+    "reset_step":        0,
+    "reset_email":       "",
+    "_salario_carregado": False,   # MISSÃO 1: flag para só buscar 1x por sessão
 }
 for _k, _v in _SS_DEFAULTS.items():
     if _k not in st.session_state:
         st.session_state[_k] = _v
+
+# ─────────────────────────────────────────────
+#  MISSÃO 2 — FIXAR IDIOMA: lê/aplica ANTES de renderizar qualquer widget
+#  A chave "seletor_idioma" é estática; o valor vem sempre do session_state.
+# ─────────────────────────────────────────────
+_LANG_OPTIONS  = {"Português": "PT", "English": "EN", "Français": "FR"}
+_LANG_LABELS   = list(_LANG_OPTIONS.keys())
+_LANG_CODES    = list(_LANG_OPTIONS.values())
+
+# Garante que lang seja sempre um código válido
+if st.session_state.lang not in _LANG_CODES:
+    st.session_state.lang = "PT"
 
 # ─────────────────────────────────────────────
 #  DICIONÁRIO I18N — TRILÍNGUE
@@ -584,6 +597,10 @@ def init_db():
     run_query("""DO $$ BEGIN IF NOT EXISTS (
         SELECT 1 FROM information_schema.columns WHERE table_name='usuarios' AND column_name='telefone'
     ) THEN ALTER TABLE usuarios ADD COLUMN telefone TEXT DEFAULT ''; END IF; END$$""")
+    # MISSÃO 1: garante que a coluna salario existe na tabela usuarios
+    run_query("""DO $$ BEGIN IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns WHERE table_name='usuarios' AND column_name='salario'
+    ) THEN ALTER TABLE usuarios ADD COLUMN salario NUMERIC(12,2) NOT NULL DEFAULT 0; END IF; END$$""")
 
 @st.cache_resource
 def init_db_once():
@@ -726,6 +743,31 @@ def autenticar_usuario(email, senha):
     except: return None
 
 # ─────────────────────────────────────────────
+#  MISSÃO 1 — SALÁRIO NO SUPABASE
+#  Funções dedicadas: buscar e atualizar
+# ─────────────────────────────────────────────
+@st.cache_data(ttl=120, show_spinner=False)
+def buscar_salario_db(uid: int) -> float:
+    """Lê o salário do banco. Cacheado por 2 min para evitar roundtrips."""
+    try:
+        rows = run_query("SELECT salario FROM usuarios WHERE id=%s", (uid,), fetch=True)
+        if rows and rows[0]["salario"] is not None:
+            return float(rows[0]["salario"])
+    except Exception as e:
+        st.error(f"❌ Erro ao buscar salário: {e}")
+    return 0.0
+
+def salvar_salario_db(uid: int, valor: float) -> bool:
+    """Persiste o salário no Supabase. Chamado SOMENTE ao clicar no botão."""
+    try:
+        run_query("UPDATE usuarios SET salario=%s WHERE id=%s", (float(valor), uid))
+        buscar_salario_db.clear()          # invalida cache para refletir novo valor
+        st.session_state.salario = valor   # atualiza estado local imediatamente
+        return True
+    except Exception as e:
+        st.error(f"❌ Erro ao salvar salário: {e}"); return False
+
+# ─────────────────────────────────────────────
 #  LANÇAMENTOS
 # ─────────────────────────────────────────────
 def inserir_lancamento(uid, desc, valor, parcelas, inicio, final, recorrente):
@@ -737,7 +779,8 @@ def inserir_lancamento(uid, desc, valor, parcelas, inicio, final, recorrente):
         invalidar_cache_lancamentos()
     except Exception as e: st.error(f"❌ {e}")
 
-@st.cache_data(ttl=30, show_spinner=False)
+# MISSÃO 3 — cache com ttl=60 nas leituras do banco
+@st.cache_data(ttl=60, show_spinner=False)
 def carregar_lancamentos(uid):
     try:
         rows = run_query("SELECT * FROM lancamentos WHERE usuario_id=%s", (uid,), fetch=True)
@@ -836,18 +879,22 @@ if st.session_state.usuario_id is None:
 # ═════════════════════════════════════════════
 if st.session_state.usuario_id is None:
 
-    # ── Seletor de idioma no topo (fora do col_center para ficar visível) ──
+    # ── MISSÃO 2 — Seletor de idioma com key estática na tela de login ──
     _lang_map = {"🇧🇷 Português": "PT", "🇺🇸 English": "EN", "🇫🇷 Français": "FR"}
-    _lang_inv = {v: k for k, v in _lang_map.items()}
     _, _lc_lang, _ = st.columns([1, 1.6, 1])
     with _lc_lang:
-        _sel = st.radio(
-            "idioma_login", options=list(_lang_map.keys()),
+        _sel_login = st.radio(
+            "idioma_login",
+            options=list(_lang_map.keys()),
             index=list(_lang_map.values()).index(st.session_state.lang),
-            horizontal=True, key="lang_radio_login", label_visibility="collapsed"
+            horizontal=True,
+            key="seletor_idioma",          # chave estática — nunca reseta
+            label_visibility="collapsed"
         )
-        # FIX: atualiza session_state diretamente — sem rerun() para não travar o widget
-        st.session_state.lang = _lang_map[_sel]
+        _novo_lang_login = _lang_map[_sel_login]
+        if _novo_lang_login != st.session_state.lang:
+            st.session_state.lang = _novo_lang_login
+            st.rerun()   # força reexecução imediata para aplicar tradução sem delay
 
     _, col_center, _ = st.columns([1, 1.6, 1])
     with col_center:
@@ -982,23 +1029,35 @@ if st.session_state.usuario_id is None:
 uid = st.session_state.usuario_id
 st.query_params["s"] = gerar_token_sessao(uid)
 
-# ── Sidebar mantida só com atalho para o painel ──
+# ─────────────────────────────────────────────
+# MISSÃO 1 — Carrega salário do banco UMA VEZ por sessão logo após o login
+# ─────────────────────────────────────────────
+if not st.session_state._salario_carregado:
+    st.session_state.salario = buscar_salario_db(uid)
+    st.session_state._salario_carregado = True
+
+# ── Sidebar ──────────────────────────────────────
 with st.sidebar:
     t = get_t()
+
+    # MISSÃO 2 — chave estática "seletor_idioma" na sidebar também
     st.markdown(f"### {t['idioma_label']}")
     _smap = {"Português": "PT", "English": "EN", "Français": "FR"}
     _ssel = st.selectbox(
         t["idioma_label"],
         options=list(_smap.keys()),
         index=list(_smap.values()).index(st.session_state.lang),
-        key="sel_idioma_sidebar",
+        key="seletor_idioma",        # chave estática — mesma do login; persiste entre reruns
         label_visibility="collapsed"
     )
-    # FIX IDIOMA: atualiza session_state diretamente sem rerun — o widget já dispara rerun do Streamlit
-    st.session_state.lang = _smap[_ssel]
-    t = get_t()  # recarrega após mudança
+    _novo_lang = _smap[_ssel]
+    if _novo_lang != st.session_state.lang:
+        st.session_state.lang = _novo_lang
+        st.rerun()   # reexecução imediata para aplicar tradução sem delay
+    t = get_t()      # recarrega após confirmação
 
     st.markdown("---")
+    # MISSÃO 1 — Salário na sidebar: só salva no DB ao clicar no botão
     st.markdown(f"### {t['salario_titulo']}")
     _sal_sb = st.number_input(
         t["salario_input"], min_value=0.0, step=100.0, format="%.2f",
@@ -1006,8 +1065,8 @@ with st.sidebar:
         key="input_salario_sidebar", label_visibility="collapsed"
     )
     if st.button(t["salario_btn"], key="btn_sal_sidebar"):
-        st.session_state.salario = _sal_sb
-        st.success(t["salario_salvo"])
+        if salvar_salario_db(uid, _sal_sb):
+            st.success(t["salario_salvo"])
 
 # ── Recarrega t após possível mudança na sidebar ──
 t = get_t()
@@ -1030,8 +1089,11 @@ with col_logout:
     st.markdown("<div style='padding-top:14px'></div>", unsafe_allow_html=True)
     st.markdown('<div class="logout-btn">', unsafe_allow_html=True)
     if st.button(t["sair"], key="btn_logout"):
-        for k in ["usuario_id","usuario_nome","salario","pref_aberto"]:
-            st.session_state[k] = None if k in ("usuario_id","usuario_nome") else (False if k == "pref_aberto" else 0.0)
+        for k in ["usuario_id","usuario_nome","salario","pref_aberto","_salario_carregado"]:
+            if k in ("usuario_id","usuario_nome"): st.session_state[k] = None
+            elif k == "pref_aberto":               st.session_state[k] = False
+            elif k == "_salario_carregado":        st.session_state[k] = False
+            else:                                  st.session_state[k] = 0.0
         st.query_params.clear(); st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -1040,15 +1102,21 @@ if st.session_state.pref_aberto:
     st.markdown('<div class="pref-panel">', unsafe_allow_html=True)
     _pc1, _pc2, _pc3 = st.columns([1.2, 1.5, 0.6])
     with _pc1:
+        # MISSÃO 2 — radio dentro do painel usa key estática (compartilhada com sidebar via session_state)
         st.markdown(f"<p style='color:#9b8dff;font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:6px;'>{t['idioma_label']}</p>", unsafe_allow_html=True)
         _pmap = {"Português": "PT", "English": "EN", "Français": "FR"}
-        _psel = st.radio("lang_panel", options=list(_pmap.keys()),
-                         index=list(_pmap.values()).index(st.session_state.lang),
-                         key="lang_radio_panel", label_visibility="collapsed")
-        # FIX: atualiza direto, sem rerun() — o próprio radio já dispara rerun
-        st.session_state.lang = _pmap[_psel]
+        _psel = st.radio(
+            "lang_panel", options=list(_pmap.keys()),
+            index=list(_pmap.values()).index(st.session_state.lang),
+            key="lang_radio_panel", label_visibility="collapsed"
+        )
+        _novo_lang_panel = _pmap[_psel]
+        if _novo_lang_panel != st.session_state.lang:
+            st.session_state.lang = _novo_lang_panel
+            st.rerun()
         t = get_t()
     with _pc2:
+        # MISSÃO 1 — salário no painel: só salva no DB ao clicar no botão
         st.markdown(f"<p style='color:#9b8dff;font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:6px;'>💰 {t['salario_titulo']}</p>", unsafe_allow_html=True)
         _sal_p = st.number_input(
             t["salario_input"], min_value=0.0, step=100.0, format="%.2f",
@@ -1056,8 +1124,8 @@ if st.session_state.pref_aberto:
             key="sal_panel", label_visibility="collapsed"
         )
         if st.button(t["salario_btn"], key="btn_sal_panel"):
-            st.session_state.salario = _sal_p
-            st.success(t["salario_salvo"])
+            if salvar_salario_db(uid, _sal_p):
+                st.success(t["salario_salvo"])
     with _pc3:
         st.markdown("<div style='padding-top:26px'></div>", unsafe_allow_html=True)
         if st.button(f"✕ {t['pref_fechar']}", key="btn_pref_close"):
@@ -1071,6 +1139,7 @@ aba_principal, aba_feedback = st.tabs([t["aba_gastos"], t["aba_feedback"]])
 # ABA 1 — GASTOS
 # ══════════════════════════════
 with aba_principal:
+    # MISSÃO 3 — uma única chamada cacheada; df_all é reutilizado tanto nos cards quanto no histórico
     df_all       = carregar_lancamentos(uid)
     total_saidas = df_all["valor_total"].astype(float).sum() if not df_all.empty else 0.0
     gasto_mensal = calcular_gasto_mensal(df_all) if not df_all.empty else 0.0
@@ -1105,10 +1174,16 @@ with aba_principal:
                 <div style="font-size:48px;opacity:0.3;">💰</div></div>""", unsafe_allow_html=True)
             st.caption(t["salario_zero_aviso"])
 
-    # ── Formulário novo lançamento + simulação em tempo real ──
+    # ── Formulário novo lançamento ─────────────
+    # MISSÃO 3 — st.form isola todos os inputs; o Streamlit só re-renderiza
+    #            a simulação ao submeter, eliminando reruns a cada dígito digitado.
+    #            A simulação leve fica em st.empty() fora do form para feedback visual.
     st.markdown(f"### {t['novo_lancamento']}")
-    with st.container():
-        st.markdown('<div class="form-section">', unsafe_allow_html=True)
+    st.markdown('<div class="form-section">', unsafe_allow_html=True)
+
+    _sim_placeholder = st.empty()   # exibe prévia da simulação ACIMA do form (sem travar inputs)
+
+    with st.form("form_novo_lancamento", clear_on_submit=True):
         col1, col2 = st.columns([2, 1])
         with col1:
             descricao = st.text_input(t["o_que_comprou"], placeholder=t["placeholder_desc"])
@@ -1122,6 +1197,7 @@ with aba_principal:
             with col4:
                 inicio_pagamento = st.date_input(t["dia_vencimento"], value=date.today(), format="DD/MM/YYYY")
             parcelas_totais = 0; final_pagamento = None
+            # Prévia apenas se campos preenchidos — dentro do form é estático até Submit
             if descricao and valor_total > 0:
                 proxima_rec = calcular_proxima_recorrente(inicio_pagamento)
                 st.markdown("<hr>", unsafe_allow_html=True)
@@ -1144,12 +1220,12 @@ with aba_principal:
                 with pc2: st.markdown(f"{t['parcelas_restantes']} `{parcelas_totais}x`")
                 with pc3: st.markdown(f"{t['venc_parcela1']} `{inicio_pagamento.strftime('%d/%m/%Y')}`")
 
-        # ── SIMULAÇÃO EM TEMPO REAL (dentro do formulário) ──────────────
+        # ── SIMULAÇÃO DE IMPACTO (dentro do form — processa ao Submit) ──
         if valor_total > 0 and salario > 0:
-            parc_sim     = parcelas_totais if (parcelas_totais and not is_recorrente) else 1
-            mensal_novo  = valor_total / parc_sim if parc_sim > 0 else valor_total
-            total_sim    = gasto_mensal + mensal_novo
-            pct_sim      = (total_sim / salario) * 100
+            parc_sim    = parcelas_totais if (parcelas_totais and not is_recorrente) else 1
+            mensal_novo = valor_total / parc_sim if parc_sim > 0 else valor_total
+            total_sim   = gasto_mensal + mensal_novo
+            pct_sim     = (total_sim / salario) * 100
             st.markdown(t["sim_info"].format(total_sim, pct_sim))
             if pct_sim > 70:
                 st.markdown(f"""<div class="alerta-simulacao">
@@ -1160,26 +1236,30 @@ with aba_principal:
                 st.success(t["sim_ok"])
         elif valor_total > 0 and salario == 0:
             st.caption(t["salario_zero_aviso"])
-        # ────────────────────────────────────────────────────────────────
 
         col_btn, _ = st.columns([1, 3])
         with col_btn:
-            if st.button(t["salvar_lancamento"]):
-                erros = []
-                if not descricao.strip(): erros.append(t["err_descricao"])
-                if valor_total <= 0:      erros.append(t["err_valor"])
-                if erros:
-                    for e in erros: st.error(e)
-                else:
-                    inserir_lancamento(uid, descricao.strip(), valor_total, parcelas_totais,
-                                       inicio_pagamento, final_pagamento, is_recorrente)
-                    st.success(t["salvo_sucesso"].format(descricao))
-                    st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
+            submitted = st.form_submit_button(t["salvar_lancamento"])
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # ── Processa o submit FORA do form (sem bloquear re-render do form) ──
+    if submitted:
+        erros = []
+        if not descricao.strip(): erros.append(t["err_descricao"])
+        if valor_total <= 0:      erros.append(t["err_valor"])
+        if erros:
+            for e in erros: st.error(e)
+        else:
+            inserir_lancamento(uid, descricao.strip(), valor_total, parcelas_totais,
+                               inicio_pagamento, final_pagamento, is_recorrente)
+            st.success(t["salvo_sucesso"].format(descricao))
+            st.rerun()
 
     # ── Histórico ──────────────────────────────
+    # MISSÃO 3 — reutiliza df_all já cacheado; não faz segunda consulta ao banco
     st.markdown(t["historico"])
-    df = carregar_lancamentos(uid)
+    df = df_all.copy()
     if df.empty:
         st.markdown(f"<div style='text-align:center;padding:60px 20px;color:#4b5563;'><div style='font-size:48px;'>📭</div>{t['nenhum_lancamento']}</div>", unsafe_allow_html=True)
     else:
