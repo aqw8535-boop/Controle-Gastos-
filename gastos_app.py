@@ -77,14 +77,30 @@ def mudar_idioma_callback():
 
 # ─────────────────────────────────────────────
 #  MISSÃO 2 — FIXAR IDIOMA: lê/aplica ANTES de renderizar qualquer widget
+#  A chave "seletor_idioma" é estática; o valor vem sempre do session_state.
 # ─────────────────────────────────────────────
 _LANG_OPTIONS  = {"Português": "PT", "English": "EN", "Français": "FR"}
 _LANG_LABELS   = list(_LANG_OPTIONS.keys())
 _LANG_CODES    = list(_LANG_OPTIONS.values())
 
+# 1. INTERCEPTAÇÃO ANTICIPADA: Se o usuário mexer no rádio da tela de login,
+# atualizamos o estado interno antes de carregar o dicionário get_t()!
+if "seletor_idioma" in st.session_state and st.session_state["seletor_idioma"] is not None:
+    _escolha_usuario = st.session_state["seletor_idioma"]
+    _codigo_detectado = "PT"
+    
+    if "English" in _escolha_usuario:
+        _codigo_detectado = "EN"
+    elif "Français" in _escolha_usuario:
+        _codigo_detectado = "FR"
+        
+    if st.session_state.lang != _codigo_detectado:
+        st.session_state.lang = _codigo_detectado
+        st.rerun()
+
+# 2. Garante que lang seja sempre um código válido por padrão
 if st.session_state.lang not in _LANG_CODES:
     st.session_state.lang = "PT"
-
 # ─────────────────────────────────────────────
 #  DICIONÁRIO I18N — TRILÍNGUE
 # ─────────────────────────────────────────────
