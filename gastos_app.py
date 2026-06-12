@@ -48,32 +48,42 @@ for _k, _v in _SS_DEFAULTS.items():
         st.session_state[_k] = _v
 
 # ─────────────────────────────────────────────
+#  SESSION STATE — inicializa ANTES de tudo
+# ─────────────────────────────────────────────
+_SS_DEFAULTS = {
+    "usuario_id":        None,
+    "usuario_nome":      None,
+    "lang":              "PT",
+    "salario":           0.0,
+    "pref_aberto":       False,
+    "reset_step":        0,
+    "reset_email":       "",
+    "_salario_carregado": False,
+}
+for _k, _v in _SS_DEFAULTS.items():
+    if _k not in st.session_state:
+        st.session_state[_k] = _v
+
+# FUNÇÃO REATIVA DO SELETOR: Roda no exato milésimo de segundo do clique!
+def mudar_idioma_callback():
+    if "seletor_idioma" in st.session_state:
+        _escolha = st.session_state["seletor_idioma"]
+        if "English" in _escolha:
+            st.session_state.lang = "EN"
+        elif "Français" in _escolha:
+            st.session_state.lang = "FR"
+        else:
+            st.session_state.lang = "PT"
+
+# ─────────────────────────────────────────────
 #  MISSÃO 2 — FIXAR IDIOMA: lê/aplica ANTES de renderizar qualquer widget
-#  A chave "seletor_idioma" é estática; o valor vem sempre do session_state.
 # ─────────────────────────────────────────────
 _LANG_OPTIONS  = {"Português": "PT", "English": "EN", "Français": "FR"}
 _LANG_LABELS   = list(_LANG_OPTIONS.keys())
 _LANG_CODES    = list(_LANG_OPTIONS.values())
 
-# Garante que lang seja sempre um código válido de início
 if st.session_state.lang not in _LANG_CODES:
     st.session_state.lang = "PT"
-
-# SE DETECTAR O CLIQUE NO RÁDIO DA TELA DE LOGIN:
-if "seletor_idioma" in st.session_state and st.session_state["seletor_idioma"] is not None:
-    _escolha_usuario = st.session_state["seletor_idioma"]
-    
-    # Faz uma busca direta para ver qual palavra bate, ignorando o emoji da bandeira
-    _codigo_detectado = "PT"
-    if "English" in _escolha_usuario:
-        _codigo_detectado = "EN"
-    elif "Français" in _escolha_usuario:
-        _codigo_detectado = "FR"
-        
-    # Se o cara clicou em algo diferente do idioma atual do app, vira a chave e dá o boot!
-    if st.session_state.lang != _codigo_detectado:
-        st.session_state.lang = _codigo_detectado
-        st.rerun()
 
 # ─────────────────────────────────────────────
 #  DICIONÁRIO I18N — TRILÍNGUE
@@ -1168,11 +1178,21 @@ with st.sidebar:
     st.markdown(f"### {t['idioma_label']}")
     _smap = {"Português": "PT", "English": "EN", "Français": "FR"}
     _ssel = st.selectbox(
-        t["idioma_label"],
-        options=list(_smap.keys()),
-        index=list(_smap.values()).index(st.session_state.lang),
-        key="seletor_idioma",        # chave estática — mesma do login; persiste entre reruns
-        label_visibility="collapsed"
+       # Descubra o índice atual para o rádio começar na marcação certa
+_indice_atual = 0
+if st.session_state.lang == "EN":
+    _indice_atual = 1
+elif st.session_state.lang == "FR":
+    _indice_atual = 2
+
+# O SEU WIDGET DEVE FICAR ASSIM:
+st.radio(
+    label="🌐 Idioma / Language", 
+    options=["🇧🇷 Português", "🇺🇸 English", "🇫🇷 Français"],
+    index=_indice_atual,
+    key="seletor_idioma",
+    on_change=mudar_idioma_callback  # <--- ESSA É A MÁGICA!
+)
     )
     _novo_lang = _smap[_ssel]
     if _novo_lang != st.session_state.lang:
