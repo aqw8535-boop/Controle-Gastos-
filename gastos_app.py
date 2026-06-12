@@ -222,6 +222,8 @@ IDIOMAS = {
         
     },
     "EN": {
+        "cad_senha2": "repeat password", 
+        "email_cad": "The same email address used for the purchase.",
         "link_esqueceu": "🔑 I forgot my Password",
         "holder_email": "my@email.com",
         "input_senha": "Password",
@@ -343,6 +345,8 @@ IDIOMAS = {
         "sucesso_conta_criada": "✅ Account created! Login in the next tab.",
     },
     "FR": {
+        "cad_senha2": "Répéter le mot de passe",    
+        "email_cad": "La même adresse e-mail que celle utilisée pour l'achat.",
         "link_esqueceu": "🔑 j'ai oublié mon mot de passe",
         "holder_email": "mon@email.com",
         "input_senha": "Mot de passe",
@@ -1158,10 +1162,10 @@ if st.session_state.usuario_id is None:
         with aba_cadastro:
             st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
             nome_cad   = st.text_input(t.get('input_nome', "Seu nome"),            key="cad_nome",   placeholder="João Silva")
-            email_cad  = st.text_input(t.get('input_email', "E-mail"),              key="cad_email",  placeholder="O mesmo e-mail usado na compra")
+            email_cad  = st.text_input(t.get('input_email', "E-mail"),              key="cad_email",  placeholder=t.get('email_cad', "O mesmo e-mail usado na compra"))
             tel_cad    = st.text_input(t.get('input_telefone', "WhatsApp / Telefone"), key="cad_tel",    placeholder="(67) 99999-9999")
-            senha_cad  = st.text_input(t.get('input_senha', "Senha"),           type="password", key="cad_senha",  placeholder="Mínimo 6 caracteres")
-            senha_cad2 = st.text_input(t.get('input_confirmar_senha', "Confirmar senha"), type="password", key="cad_senha2", placeholder="Repita a senha")
+            senha_cad  = st.text_input(t.get('input_senha', "Senha"),           type="password", key="cad_senha",  placeholder=t.get('err_senha_curta',"Mínimo 6 caracteres"))
+            senha_cad2 = st.text_input(t.get('input_confirmar_senha', "Confirmar senha"), type="password", key="cad_senha2", placeholder=t.get('cad_senha2',"Repita a senha"))
             st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
             
             if st.button(t.get('btn_criar_conta', "Criar minha conta →"), key="btn_cadastro"):
