@@ -328,6 +328,7 @@ IDIOMAS = {
         "err_codigo_expirado": "Invalid or expired code.",
         "sucesso_senha_redefinida": "🎉 Password reset! Please login.",
         "input_nome": "Your name",
+        "Senha": "Teste de tradução",
         "input_telefone": "WhatsApp / Phone",
         "input_confirmar_senha": "Confirm password",
         "btn_criar_conta": "Create my account →",
