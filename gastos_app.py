@@ -36,7 +36,7 @@ st.markdown("""
 _SS_DEFAULTS = {
     "usuario_id":        None,
     "usuario_nome":      None,
-    "lang":              "PT",
+    "lang":              "FR",
     "salario":           0.0,
     "pref_aberto":       False,
     "reset_step":        0,
@@ -57,7 +57,7 @@ _LANG_CODES    = list(_LANG_OPTIONS.values())
 
 # Garante que lang seja sempre um código válido
 if st.session_state.lang not in _LANG_CODES:
-    st.session_state.lang = "PT"
+    st.session_state.lang = "FR"
 
 # ─────────────────────────────────────────────
 #  DICIONÁRIO I18N — TRILÍNGUE
