@@ -222,7 +222,8 @@ IDIOMAS = {
         
     },
     "EN": {
-        "email_sem_licença": "Access Denied! This email does not have an active license.",
+        "não_autorizado": "Access Denied! This email does not have an active license.",
+        "assinatura_expirada": "Subscription expired! Renew to reactivate.",
         "cad_senha2": "repeat password", 
         "email_cad": "The same email address used for the purchase.",
         "link_esqueceu": "🔑 I forgot my Password",
@@ -880,8 +881,8 @@ def enviar_email_reset(destinatario, token):
 def criar_usuario(nome, email, senha, telefone=""):
     ok, motivo = verificar_status_licenca(email)
     if not ok:
-        msgs = {"não_autorizado": "Acesso Negado! Este e-mail não possui licença ativa.",
-                "assinatura_expirada": "Assinatura expirada! Renove para reativar."}
+        msgs = {"não_autorizado":t.get('não_autorizado', "Acesso Negado! Este e-mail não possui licença ativa."),
+                "assinatura_expirada":t.get('assinatura_expirada', "Assinatura expirada! Renove para reativar.")}
         return False, msgs.get(motivo, "Licença inválida.")
     try:
         run_query("INSERT INTO usuarios (nome,email,senha,telefone) VALUES (%s,%s,%s,%s)",
