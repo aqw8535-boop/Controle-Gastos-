@@ -1193,52 +1193,57 @@ with st.sidebar:
     t = get_t()
     st.markdown(f"### {t.get('idioma_label', '🌐 Idioma / Language')}")
     
-    # 1. Mapeamento direto de índices para não dar efeito bumerangue
+    # 1. Calcula dinamicamente o índice inicial correto para o componente
     _indice_padrao = 0
     if st.session_state.lang == "EN":
         _indice_padrao = 1
     elif st.session_state.lang == "FR":
         _indice_padrao = 2
         
-    # 2. O componente correto, limpo e com a chave estática idêntica à do topo
+    # 2. Componente de Seleção Limpo e Unificado
     _smap = {"🇧🇷 Português": "PT", "🇺🇸 English": "EN", "🇫🇷 Français": "FR"}
     _sel_idioma_sidebar = st.selectbox(
         label="Select Language",
         options=list(_smap.keys()),
         index=_indice_padrao,
-        key="seletor_idioma",  # <--- Mesma chave lida pelo interceptador do topo
+        key="seletor_idioma",  # Chave lida pelo interceptador do topo do arquivo
         label_visibility="collapsed"
     )
-)
-    )
-    _novo_lang = _smap[_ssel]
+    
+    # 3. Faz a mudança em tempo de execução de forma limpa
+    _novo_lang = _smap[_sel_idioma_sidebar]
     if _novo_lang != st.session_state.lang:
         st.session_state.lang = _novo_lang
-        st.rerun()   # reexecução imediata para aplicar tradução sem delay
-    t = get_t()      # recarrega após confirmação
+        st.rerun()
 
     st.markdown("---")
-    # MISSÃO 1 — Salário na sidebar: só salva no DB ao clicar no botão
-    st.markdown(f"### {t['salario_titulo']}")
+    
+    # MISSÃO 1 — Salário na sidebar (Apenas visível se logado, usando tratamento seguro .get)
+    st.markdown(f"### {t.get('salario_titulo', 'Salário Atual')}")
     _sal_sb = st.number_input(
-        t["salario_input"], min_value=0.0, step=100.0, format="%.2f",
+        t.get('salario_input', 'Valor'), min_value=0.0, step=100.0, format="%.2f",
         value=float(st.session_state.salario),
         key="input_salario_sidebar", label_visibility="collapsed"
     )
-    if st.button(t["salario_btn"], key="btn_sal_sidebar"):
-        if salvar_salario_db(uid, _sal_sb):
-            st.success(t["salario_salvo"])
+    if st.button(t.get('salario_btn', 'Salvar Salário'), key="btn_sal_sidebar"):
+        if 'uid' in locals() or 'uid' in globals():
+            if salvar_salario_db(st.session_state.usuario_id, _sal_sb):
+                st.success(t.get('salario_salvo', 'Salvo com sucesso!'))
 
 # ── Recarrega t após possível mudança na sidebar ──
 t = get_t()
 
-# ── Header ──────────────────────────────────────
+# ─────────────────────────────────────────────
+#  HEADER DA APLICAÇÃO (LOGADO)
+# ─────────────────────────────────────────────
 col_titulo, col_usuario, col_pref, col_logout = st.columns([5, 2, 0.6, 0.8])
 with col_titulo:
     st.markdown("# GASTEI ⚡")
-    st.markdown(f"<p style='color:#6b7280;margin-top:-12px;margin-bottom:28px;'>{t['app_subtitle']}</p>", unsafe_allow_html=True)
+    st.markdown(f"<p style='color:#6b7280;margin-top:-12px;margin-bottom:28px;'>{t.get('app_subtitle', '')}</p>", unsafe_allow_html=True)
+
 with col_usuario:
-    st.markdown(f"<div style='text-align:right;padding-top:18px;font-size:13px;color:#9ca3af;'>{t['ola']}, <strong style='color:#c4b5fd'>{st.session_state.usuario_nome}</strong> 👋</div>", unsafe_allow_html=True)
+    st.markdown(f"<div style='text-align:right;padding-top:18px;font-size:13px;color:#9ca3af;'>{t.get('ola', 'Olá')}, <strong style='color:#c4b5fd'>{st.session_state.usuario_nome}</strong> 👋</div>", unsafe_allow_html=True)
+
 with col_pref:
     st.markdown("<div style='padding-top:14px'></div>", unsafe_allow_html=True)
     st.markdown('<div class="pref-btn">', unsafe_allow_html=True)
@@ -1246,18 +1251,23 @@ with col_pref:
         st.session_state.pref_aberto = not st.session_state.pref_aberto
         st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
+
 with col_logout:
     st.markdown("<div style='padding-top:14px'></div>", unsafe_allow_html=True)
     st.markdown('<div class="logout-btn">', unsafe_allow_html=True)
-    if st.button(t["sair"], key="btn_logout"):
-        for k in ["usuario_id","usuario_nome","salario","pref_aberto","_salario_carregado"]:
-            if k in ("usuario_id","usuario_nome"): st.session_state[k] = None
-            elif k == "pref_aberto":               st.session_state[k] = False
-            elif k == "_salario_carregado":        st.session_state[k] = False
-            else:                                  st.session_state[k] = 0.0
-        st.query_params.clear(); st.rerun()
+    if st.button(t.get('sair', 'Sair'), key="btn_logout"):
+        for k in ["usuario_id", "usuario_nome", "salario", "pref_aberto", "_salario_carregado"]:
+            if k in ("usuario_id", "usuario_nome"): 
+                st.session_state[k] = None
+            elif k == "pref_aberto":               
+                st.session_state[k] = False
+            elif k == "_salario_carregado":        
+                st.session_state[k] = False
+            else:                                  
+                st.session_state[k] = 0.0
+        st.query_params.clear()
+        st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
-
 # ── Painel ⚙️ inline ─────────────────────────────
 if st.session_state.pref_aberto:
     st.markdown('<div class="pref-panel">', unsafe_allow_html=True)
