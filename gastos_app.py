@@ -222,9 +222,8 @@ IDIOMAS = {
         
     },
     "EN": {
-        "email_sem_licença": {"unauthorized": "Access Denied! This email does not have an active license.",
-
-"subscription_expired": "Subscription expired! Renew to reactivate."},
+        "email_sem_licença": "unauthorized" "Access Denied! This email does not have an active license."
+"subscription_expired" "Subscription expired! Renew to reactivate.",
         "cad_senha2": "repeat password", 
         "email_cad": "The same email address used for the purchase.",
         "link_esqueceu": "🔑 I forgot my Password",
