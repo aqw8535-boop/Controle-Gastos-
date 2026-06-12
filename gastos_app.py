@@ -59,6 +59,20 @@ _LANG_CODES    = list(_LANG_OPTIONS.values())
 if st.session_state.lang not in _LANG_CODES:
     st.session_state.lang = "PT"
 
+# INTERCEPTOU O CLIQUE: Se o seletor da tela de login já foi desenhado e mudou,
+# atualiza o estado interno na hora e força o refresh antes de desenhar o formulário!
+if "seletor_idioma" in st.session_state and st.session_state["seletor_idioma"] is not None:
+    # Mapeia o texto do rádio ("🇧🇷 Português", etc) para o código correto ("PT")
+    _texto_selecionado = st.session_state["seletor_idioma"]
+    # Limpa emojis se houver na string para não dar erro no dicionário
+    _texto_limpo = _texto_selecionado.replace("🇧🇷 ", "").replace("🇺🇸 ", "").replace("🇫🇷 ", "")
+    
+    _codigo_detectado = _LANG_OPTIONS.get(_texto_limpo, "PT")
+    
+    if st.session_state.lang != _codigo_detectado:
+        st.session_state.lang = _codigo_detectado
+        st.rerun()
+
 # ─────────────────────────────────────────────
 #  DICIONÁRIO I18N — TRILÍNGUE
 # ─────────────────────────────────────────────
