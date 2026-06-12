@@ -975,7 +975,7 @@ if st.session_state.usuario_id is None:
         else: st.query_params.clear()
 
 # ═════════════════════════════════════════════
-#  TELA DE LOGIN / CADASTRO
+#  TELA DE LOGIN / CADASTRO (INTERNACIONALIZADA)
 # ═════════════════════════════════════════════
 if st.session_state.usuario_id is None:
 
@@ -996,130 +996,139 @@ if st.session_state.usuario_id is None:
             st.session_state.lang = _novo_lang_login
             st.rerun()   # força reexecução imediata para aplicar tradução sem delay
 
+    # Puxa as traduções atualizadas para a renderização abaixo
+    t = get_t()
+
     _, col_center, _ = st.columns([1, 1.6, 1])
     with col_center:
-        st.markdown("""
+        st.markdown(f"""
         <div class="login-wrap">
             <div class="login-logo">💳</div>
-            <div class="login-title">Gastei - Finanças Premium</div>
-            <div class="login-sub">Controle de Gastos de Alta Performance</div>
+            <div class="login-title">Gastei - {t.get('login_titulo_app', 'Finanças Premium')}</div>
+            <div class="login-sub">{t.get('login_sub_app', 'Controle de Gastos de Alta Performance')}</div>
         </div>
         """, unsafe_allow_html=True)
 
-        aba_login, aba_cadastro = st.tabs(["🔑  Entrar", "✨  Criar Conta"])
+        aba_login, aba_cadastro = st.tabs([t.get('aba_entrar', "🔑  Entrar"), t.get('aba_criar_conta', "✨  Criar Conta")])
 
         with aba_login:
             if st.session_state.reset_step == 0:
                 st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
-                email_login = st.text_input("E-mail", key="login_email", placeholder="seu@email.com")
-                senha_login = st.text_input("Senha", type="password", key="login_senha", placeholder="••••••••")
+                email_login = st.text_input(t.get('input_email', "E-mail"), key="login_email", placeholder="seu@email.com")
+                senha_login = st.text_input(t.get('input_senha', "Senha"), type="password", key="login_senha", placeholder="••••••••")
                 st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-                if st.button("Entrar →", key="btn_login"):
+                
+                if st.button(t.get('btn_entrar_seta', "Entrar →"), key="btn_login"):
                     if not email_login or not senha_login:
-                        st.error("Preencha e-mail e senha.")
+                        st.error(t.get('err_preencha_dados', "Preencha e-mail e senha."))
                     else:
                         resultado = autenticar_usuario(email_login, senha_login)
                         if resultado == "bloqueado":
-                            st.error("🛑 Acesso Bloqueado! Assinatura expirada ou e-mail não autorizado.")
+                            st.error(t.get('err_bloqueado', "🛑 Acesso Bloqueado! Assinatura expirada ou e-mail não autorizado."))
                         elif resultado:
                             st.session_state.usuario_id   = resultado[0]
                             st.session_state.usuario_nome = resultado[1]
                             st.query_params["s"] = gerar_token_sessao(resultado[0])
                             st.rerun()
                         else:
-                            st.error("E-mail ou senha incorretos.")
+                            st.error(t.get('err_dados_invalidos', "E-mail ou senha incorretos."))
+                            
                 st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
                 st.markdown('<div class="btn-link">', unsafe_allow_html=True)
-                if st.button("🔑 Esqueci minha senha", key="btn_forgot"):
+                if st.button(t.get('link_esqueceu', "🔑 Esqueci minha senha"), key="btn_forgot"):
                     st.session_state.reset_step = 1; st.rerun()
                 st.markdown('</div>', unsafe_allow_html=True)
+                
                 numero_suporte = "5567991158892"
-                msg_wa = "Olá! Quero verificar o status do meu acesso no app Gastei."
+                msg_wa = t.get('msg_suporte_wa', "Olá! Quero verificar o status do meu acesso no app Gastei.")
                 link_wa = f"https://wa.me/{numero_suporte}?text={msg_wa.replace(' ','%20')}"
                 st.markdown(f"""
                 <div style='text-align:center;margin-top:8px;'>
                     <a href="{link_wa}" target="_blank" style="color:#9b8dff;font-size:13px;text-decoration:none;opacity:0.8;">
-                        🔒 Problemas com o acesso? — Falar com o Suporte</a>
+                        🔒 {t.get('link_suporte', 'Problemas com o acesso? — Falar com o Suporte')}</a>
                 </div>
                 <div style='text-align:center;margin-top:8px;'>
                     <a href="https://finatechlab.com/pagina-vendas-gastei/" target="_blank"
                        style="color:#64b5f6;font-size:12px;text-decoration:none;opacity:0.65;">
-                        🛒 Ainda não tem acesso? Conheça o Gastei →</a>
+                        🛒 {t.get('link_vendas', 'Ainda não tem acesso? Conheça o Gastei →')}</a>
                 </div>""", unsafe_allow_html=True)
                 st.markdown("<br>", unsafe_allow_html=True)
-                with st.expander("🛡️ Termos de Uso e Política de Privacidade"):
-                    st.write("Seus dados financeiros são armazenados de forma criptografada e privativa. Não compartilhamos suas informações.")
+                with st.expander(t.get('expander_termos', "🛡️ Termos de Uso e Política de Privacidade")):
+                    st.write(t.get('texto_termos', "Seus dados financeiros são armazenados de forma criptografada e privativa. Não compartilhamos suas informações."))
 
             elif st.session_state.reset_step == 1:
-                st.info("📧 Informe o e-mail cadastrado. Enviaremos um código de 6 dígitos.")
-                email_reset = st.text_input("E-mail cadastrado", key="reset_email_input", placeholder="seu@email.com")
+                st.info(t.get('info_reset_email', "📧 Informe o e-mail cadastrado. Enviaremos um código de 6 dígitos."))
+                email_reset = st.text_input(t.get('input_email_cadastrado', "E-mail cadastrado"), key="reset_email_input", placeholder="seu@email.com")
                 col_env, col_vol = st.columns(2)
                 with col_env:
-                    if st.button("Enviar código →", key="btn_send_token"):
-                        if not email_valido(email_reset): st.error("E-mail inválido.")
+                    if st.button(t.get('btn_enviar_codigo', "Enviar código →"), key="btn_send_token"):
+                        if not email_valido(email_reset): st.error(t.get('err_email_invalido', "E-mail inválido."))
                         else:
                             rows = run_query("SELECT id FROM usuarios WHERE email=%s", (email_reset.strip().lower(),), fetch=True)
-                            if not rows: st.error("E-mail não encontrado.")
+                            if not rows: st.error(t.get('err_email_nao_encontrado', "E-mail não encontrado."))
                             else:
                                 tok = gerar_token_reset(email_reset)
                                 if tok and enviar_email_reset(email_reset, tok):
                                     st.session_state.reset_email = email_reset.strip().lower()
                                     st.session_state.reset_step  = 2; st.rerun()
                 with col_vol:
-                    if st.button("← Voltar", key="btn_back_1"):
+                    if st.button(t.get('link_voltar_login', "← Voltar"), key="btn_back_1"):
                         st.session_state.reset_step = 0; st.rerun()
 
             elif st.session_state.reset_step == 2:
-                st.success(f"✅ Código enviado para **{st.session_state.reset_email}**.")
-                codigo = st.text_input("Código de 6 dígitos", key="reset_token_input", placeholder="123456", max_chars=6)
-                nova1  = st.text_input("Nova senha", type="password", key="reset_pass1", placeholder="Mínimo 6 caracteres")
-                nova2  = st.text_input("Confirmar nova senha", type="password", key="reset_pass2", placeholder="Repita a senha")
+                msg_sucesso_cod = t.get('sucesso_codigo_enviado', "✅ Código enviado para **{}**.").format(st.session_state.reset_email)
+                st.success(msg_sucesso_cod)
+                codigo = st.text_input(t.get('input_codigo_digitos', "Código de 6 dígitos"), key="reset_token_input", placeholder="123456", max_chars=6)
+                nova1  = st.text_input(t.get('input_nova_senha', "Nova senha"), type="password", key="reset_pass1", placeholder="Mínimo 6 caracteres")
+                nova2  = st.text_input(t.get('input_confirmar_nova', "Confirmar nova senha"), type="password", key="reset_pass2", placeholder="Repita a senha")
                 col_conf, col_vol2 = st.columns(2)
                 with col_conf:
-                    if st.button("Redefinir senha →", key="btn_confirm_reset"):
+                    if st.button(t.get('btn_redefinir_senha', "Redefinir senha →"), key="btn_confirm_reset"):
                         erros = []
-                        if not codigo.strip(): erros.append("Informe o código.")
-                        if len(nova1) < 6:     erros.append("Mínimo 6 caracteres.")
-                        if nova1 != nova2:     erros.append("Senhas não conferem.")
+                        if not codigo.strip(): erros.append(t.get('err_informe_codigo', "Informe o código."))
+                        if len(nova1) < 6:     erros.append(t.get('err_senha_curta', "Mínimo 6 caracteres."))
+                        if nova1 != nova2:     erros.append(t.get('err_senhas_diferentes', "Senhas não conferem."))
                         if erros:
                             for e in erros: st.error(e)
                         elif not validar_token_reset(st.session_state.reset_email, codigo):
-                            st.error("Código inválido ou expirado.")
+                            st.error(t.get('err_codigo_expirado', "Código inválido ou expirado."))
                         else:
                             if trocar_senha(st.session_state.reset_email, nova1):
                                 consumir_token_reset(st.session_state.reset_email, codigo)
-                                st.success("🎉 Senha redefinida! Faça login.")
+                                st.success(t.get('sucesso_senha_redefinida', "🎉 Senha redefinida! Faça login."))
                                 st.session_state.reset_step = 0; st.session_state.reset_email = ""; st.rerun()
                 with col_vol2:
-                    if st.button("← Voltar", key="btn_back_2"):
+                    if st.button(t.get('link_voltar_login', "← Voltar"), key="btn_back_2"):
                         st.session_state.reset_step = 1; st.rerun()
 
         with aba_cadastro:
             st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
-            nome_cad   = st.text_input("Seu nome",            key="cad_nome",   placeholder="João Silva")
-            email_cad  = st.text_input("E-mail",              key="cad_email",  placeholder="O mesmo e-mail usado na compra")
-            tel_cad    = st.text_input("WhatsApp / Telefone", key="cad_tel",    placeholder="(67) 99999-9999")
-            senha_cad  = st.text_input("Senha",           type="password", key="cad_senha",  placeholder="Mínimo 6 caracteres")
-            senha_cad2 = st.text_input("Confirmar senha", type="password", key="cad_senha2", placeholder="Repita a senha")
+            nome_cad   = st.text_input(t.get('input_nome', "Seu nome"),            key="cad_nome",   placeholder="João Silva")
+            email_cad  = st.text_input(t.get('input_email', "E-mail"),              key="cad_email",  placeholder="O mesmo e-mail usado na compra")
+            tel_cad    = st.text_input(t.get('input_telefone', "WhatsApp / Telefone"), key="cad_tel",    placeholder="(67) 99999-9999")
+            senha_cad  = st.text_input(t.get('input_senha', "Senha"),           type="password", key="cad_senha",  placeholder="Mínimo 6 caracteres")
+            senha_cad2 = st.text_input(t.get('input_confirmar_senha', "Confirmar senha"), type="password", key="cad_senha2", placeholder="Repita a senha")
             st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-            if st.button("Criar minha conta →", key="btn_cadastro"):
+            
+            if st.button(t.get('btn_criar_conta', "Criar minha conta →"), key="btn_cadastro"):
                 erros = []
                 if not all([nome_cad, email_cad, tel_cad, senha_cad, senha_cad2]):
-                    erros.append("Preencha todos os campos.")
-                elif not email_valido(email_cad):  erros.append("E-mail inválido.")
-                elif not telefone_valido(tel_cad): erros.append("Telefone inválido.")
-                elif len(senha_cad) < 6:           erros.append("Senha: mínimo 6 caracteres.")
-                elif senha_cad != senha_cad2:      erros.append("Senhas não conferem.")
+                    erros.append(t.get('err_campos_vazios', "Preencha todos os campos."))
+                elif not email_valido(email_cad):  erros.append(t.get('err_email_invalido', "E-mail inválido."))
+                elif not telefone_valido(tel_cad): erros.append(t.get('err_tel_invalido', "Telefone inválido."))
+                elif len(senha_cad) < 6:           erros.append(t.get('err_senha_curta', "Senha: mínimo 6 caracteres."))
+                elif senha_cad != senha_cad2:      erros.append(t.get('err_senhas_diferentes', "Senhas não conferem."))
                 if erros:
                     for e in erros: st.error(e)
                 else:
                     ok, msg = criar_usuario(nome_cad, email_cad, senha_cad, tel_cad)
-                    if ok: st.success("✅ Conta criada! Faça login na aba ao lado.")
+                    if ok: st.success(t.get('sucesso_conta_criada', "✅ Conta criada! Faça login na aba ao lado."))
                     else:  st.error(msg)
-            st.markdown("""<div style='text-align:center;margin-top:16px;'>
+                    
+            st.markdown(f"""<div style='text-align:center;margin-top:16px;'>
                 <a href="https://finatechlab.com/pagina-vendas-gastei/" target="_blank"
                    style="color:#64b5f6;font-size:12px;text-decoration:none;opacity:0.65;">
-                    🛒 Ainda não comprou? Conheça os planos →</a></div>""", unsafe_allow_html=True)
+                    🛒 {t.get('link_vendas_planos', 'Ainda não comprou? Conheça os planos →')}</a></div>""", unsafe_allow_html=True)
 
     st.stop()
 
