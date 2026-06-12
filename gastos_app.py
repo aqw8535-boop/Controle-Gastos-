@@ -221,7 +221,9 @@ IDIOMAS = {
         "sucesso_conta_criada": "✅ Conta criada! Faça login na aba ao lado.",
         
     },
-    "EN": {"input_senha": "Password",
+    "EN": {
+        "input_email": "my@email.com"
+        "input_senha": "Password",
         "input_nova_senha": "New Password",
         "input_confirmar_nova": "Confirm New Password",
         "input_confirmar_senha": "Confirm Password",
@@ -340,6 +342,7 @@ IDIOMAS = {
         "sucesso_conta_criada": "✅ Account created! Login in the next tab.",
     },
     "FR": {
+        "input_email": "moi@email.com"
         "input_senha": "Mot de passe",
         "input_nova_senha": "Nouveau mot de passe",
         "input_confirmar_nova": "Confirmer le mot de passe",
