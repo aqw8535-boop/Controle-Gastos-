@@ -54,6 +54,7 @@ for _k, _v in _SS_DEFAULTS.items():
 _LANG_OPTIONS  = {"Português": "PT", "English": "EN", "Français": "FR"}
 _LANG_LABELS   = list(_LANG_OPTIONS.keys())
 _LANG_CODES    = list(_LANG_OPTIONS.values())
+st.rerun()
 
 # Garante que lang seja sempre um código válido
 if st.session_state.lang not in _LANG_CODES:
