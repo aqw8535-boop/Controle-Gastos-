@@ -108,7 +108,7 @@ IDIOMAS = {
     "PT": {
         "app_subtitle":         "Finanças Pessoais Premium Inteligentes",
         "ola":                  "Olá",
-        "sair":                 "Sair 🚪",
+        "sair":                 "🚪",
         "aba_gastos":           "📊 Meus Gastos",
         "aba_feedback":         "💬 Feedbacks & Sugestões",
         "total_saidas":         "Total de Saídas Contratadas",
@@ -223,7 +223,7 @@ IDIOMAS = {
     "EN": {
         "app_subtitle":         "Intelligent Premium Personal Finance",
         "ola":                  "Hello",
-        "sair":                 "Logout 🚪",
+        "sair":                 "🚪",
         "aba_gastos":           "📊 My Expenses",
         "aba_feedback":         "💬 Feedback & Suggestions",
         "total_saidas":         "Total Contracted Expenses",
@@ -328,7 +328,6 @@ IDIOMAS = {
         "err_codigo_expirado": "Invalid or expired code.",
         "sucesso_senha_redefinida": "🎉 Password reset! Please login.",
         "input_nome": "Your name",
-        "Senha": "Teste de tradução",
         "input_telefone": "WhatsApp / Phone",
         "input_confirmar_senha": "Confirm password",
         "btn_criar_conta": "Create my account →",
@@ -339,7 +338,7 @@ IDIOMAS = {
     "FR": {
         "app_subtitle":         "Finances Personnelles Premium Intelligentes",
         "ola":                  "Bonjour",
-        "sair":                 "Déconnexion 🚪",
+        "sair":                 "🚪",
         "aba_gastos":           "📊 Mes Dépenses",
         "aba_feedback":         "💬 Retours & Suggestions",
         "total_saidas":         "Total des Dépenses Contractées",
