@@ -1186,28 +1186,29 @@ if not st.session_state._salario_carregado:
     st.session_state.salario = buscar_salario_db(uid)
     st.session_state._salario_carregado = True
 
-# ── Sidebar ──────────────────────────────────────
+# ─────────────────────────────────────────────
+#  SIDEBAR / SELETOR DE IDIOMA GLOBAL
+# ─────────────────────────────────────────────
 with st.sidebar:
     t = get_t()
-
-    # MISSÃO 2 — chave estática "seletor_idioma" na sidebar também
-    st.markdown(f"### {t['idioma_label']}")
-    _smap = {"Português": "PT", "English": "EN", "Français": "FR"}
-    _ssel = st.selectbox(
-      # Descobre dinamicamente em qual posição o seletor visual deve começar marcado
-_indice_padrao = 0
-if st.session_state.lang == "EN":
-    _indice_padrao = 1
-elif st.session_state.lang == "FR":
-    _indice_padrao = 2
-
-# O rádio/selectbox da interface de login deve estar configurado exatamente assim:
-st.radio(
-    label="🌐 Idioma / Language", 
-    options=["🇧🇷 Português", "🇺🇸 English", "🇫🇷 Français"],
-    index=_indice_padrao,
-    key="seletor_idioma"
-)
+    st.markdown(f"### {t.get('idioma_label', '🌐 Idioma / Language')}")
+    
+    # 1. Mapeamento direto de índices para não dar efeito bumerangue
+    _indice_padrao = 0
+    if st.session_state.lang == "EN":
+        _indice_padrao = 1
+    elif st.session_state.lang == "FR":
+        _indice_padrao = 2
+        
+    # 2. O componente correto, limpo e com a chave estática idêntica à do topo
+    _smap = {"🇧🇷 Português": "PT", "🇺🇸 English": "EN", "🇫🇷 Français": "FR"}
+    _sel_idioma_sidebar = st.selectbox(
+        label="Select Language",
+        options=list(_smap.keys()),
+        index=_indice_padrao,
+        key="seletor_idioma",  # <--- Mesma chave lida pelo interceptador do topo
+        label_visibility="collapsed"
+    )
 )
     )
     _novo_lang = _smap[_ssel]
