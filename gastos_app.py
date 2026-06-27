@@ -63,7 +63,8 @@ _SS_DEFAULTS = {
     "reset_email":        "",
     "_salario_carregado": False,
     "oauth_state":        "",    # CSRF token do Google OAuth
-}for _k, _v in _SS_DEFAULTS.items():
+}
+for _k, _v in _SS_DEFAULTS.items():
     if _k not in st.session_state:
         st.session_state[_k] = _v
 
