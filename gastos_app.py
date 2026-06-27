@@ -1396,123 +1396,123 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-            email_login = st.text_input(t.get('input_email', "E-mail"), key="login_email", placeholder=t.get('holder_email', "seu@email.com"))
-            senha_login = st.text_input(t.get('input_senha', "Senha"), type="password", key="login_senha", placeholder="••••••••")
-            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-                
-                if st.button(t.get('btn_entrar_seta', "Entrar →"), key="btn_login"):
-                    if not email_login or not senha_login:
-                        st.error(t.get('err_preencha_dados', "Preencha e-mail e senha."))
-                    else:
-                        resultado = autenticar_usuario(email_login, senha_login)
-                        if resultado == "bloqueado":
-                            st.error(t.get('err_bloqueado', "🛑 Acesso Bloqueado! Assinatura expirada ou e-mail não autorizado."))
-                        elif resultado:
-                            st.session_state.usuario_id   = resultado[0]
-                            st.session_state.usuario_nome = resultado[1]
-                            st.query_params["s"] = gerar_token_sessao(resultado[0])
-                            st.rerun()
-                        else:
-                            st.error(t.get('err_dados_invalidos', "E-mail ou senha incorretos."))
-                            
-                st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
-                st.markdown('<div class="btn-link">', unsafe_allow_html=True)
-                if st.button(t.get('link_esqueceu', "🔑 Esqueci minha senha"), key="btn_forgot"):
-                    st.session_state.reset_step = 1; st.rerun()
-                st.markdown('</div>', unsafe_allow_html=True)
-                
-                numero_suporte = "5567991158892"
-                msg_wa = t.get('msg_suporte_wa', "Olá! Quero verificar o status do meu acesso no app Gastei.")
-                link_wa = f"https://wa.me/{numero_suporte}?text={msg_wa.replace(' ','%20')}"
-                st.markdown(f"""
-                <div style='text-align:center;margin-top:8px;'>
-                    <a href="{link_wa}" target="_blank" style="color:#9b8dff;font-size:13px;text-decoration:none;opacity:0.8;">
-                        🔒 {t.get('link_suporte', 'Problemas com o acesso? — Falar com o Suporte')}</a>
-                </div>
-                <div style='text-align:center;margin-top:8px;'>
-                    <a href="https://finatechlab.com/pagina-vendas-gastei/" target="_blank"
-                       style="color:#64b5f6;font-size:12px;text-decoration:none;opacity:0.65;">
-                        🛒 {t.get('link_vendas', 'Ainda não tem acesso? Conheça o Gastei →')}</a>
-                </div>""", unsafe_allow_html=True)
-                st.markdown("<br>", unsafe_allow_html=True)
-                with st.expander(t.get('expander_termos', "🛡️ Termos de Uso e Política de Privacidade")):
-                    st.write(t.get('texto_termos', "Seus dados financeiros são armazenados de forma criptografada e privativa. Não compartilhamos suas informações."))
-
-            elif st.session_state.reset_step == 1:
-                st.info(t.get('info_reset_email', "📧 Informe o e-mail cadastrado. Enviaremos um código de 6 dígitos."))
-                email_reset = st.text_input(t.get('input_email_cadastrado', "E-mail cadastrado"), key="reset_email_input", placeholder="seu@email.com")
-                col_env, col_vol = st.columns(2)
-                with col_env:
-                    if st.button(t.get('btn_enviar_codigo', "Enviar código →"), key="btn_send_token"):
-                        if not email_valido(email_reset): st.error(t.get('err_email_invalido', "E-mail inválido."))
-                        else:
-                            rows = run_query("SELECT id FROM usuarios WHERE email=%s", (email_reset.strip().lower(),), fetch=True)
-                            if not rows: st.error(t.get('err_email_nao_encontrado', "E-mail não encontrado."))
-                            else:
-                                tok = gerar_token_reset(email_reset)
-                                if tok and enviar_email_reset(email_reset, tok):
-                                    st.session_state.reset_email = email_reset.strip().lower()
-                                    st.session_state.reset_step  = 2; st.rerun()
-                with col_vol:
-                    if st.button(t.get('link_voltar_login', "← Voltar"), key="btn_back_1"):
-                        st.session_state.reset_step = 0; st.rerun()
-
-            elif st.session_state.reset_step == 2:
-                msg_sucesso_cod = t.get('sucesso_codigo_enviado', "✅ Código enviado para **{}**.").format(st.session_state.reset_email)
-                st.success(msg_sucesso_cod)
-                codigo = st.text_input(t.get('input_codigo_digitos', "Código de 6 dígitos"), key="reset_token_input", placeholder="123456", max_chars=6)
-                nova1  = st.text_input(t.get('input_nova_senha', "Nova senha"), type="password", key="reset_pass1", placeholder="Mínimo 6 caracteres")
-                nova2  = st.text_input(t.get('input_confirmar_nova', "Confirmar nova senha"), type="password", key="reset_pass2", placeholder="Repita a senha")
-                col_conf, col_vol2 = st.columns(2)
-                with col_conf:
-                    if st.button(t.get('btn_redefinir_senha', "Redefinir senha →"), key="btn_confirm_reset"):
-                        erros = []
-                        if not codigo.strip(): erros.append(t.get('err_informe_codigo', "Informe o código."))
-                        if len(nova1) < 6:     erros.append(t.get('err_senha_curta', "Mínimo 6 caracteres."))
-                        if nova1 != nova2:     erros.append(t.get('err_senhas_diferentes', "Senhas não conferem."))
-                        if erros:
-                            for e in erros: st.error(e)
-                        elif not validar_token_reset(st.session_state.reset_email, codigo):
-                            st.error(t.get('err_codigo_expirado', "Código inválido ou expirado."))
-                        else:
-                            if trocar_senha(st.session_state.reset_email, nova1):
-                                consumir_token_reset(st.session_state.reset_email, codigo)
-                                st.success(t.get('sucesso_senha_redefinida', "🎉 Senha redefinida! Faça login."))
-                                st.session_state.reset_step = 0; st.session_state.reset_email = ""; st.rerun()
-                with col_vol2:
-                    if st.button(t.get('link_voltar_login', "← Voltar"), key="btn_back_2"):
-                        st.session_state.reset_step = 1; st.rerun()
-
-        with aba_cadastro:
-            st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
-            nome_cad   = st.text_input(t.get('input_nome', "Seu nome"),            key="cad_nome",   placeholder="João Silva")
-            email_cad  = st.text_input(t.get('input_email', "E-mail"),              key="cad_email",  placeholder=t.get('email_cad', "O mesmo e-mail usado na compra"))
-            tel_cad    = st.text_input(t.get('input_telefone', "WhatsApp / Telefone"), key="cad_tel",    placeholder="(67) 99999-9999")
-            senha_cad  = st.text_input(t.get('input_senha', "Senha"),           type="password", key="cad_senha",  placeholder=t.get('err_senha_curta',"Mínimo 6 caracteres"))
-            senha_cad2 = st.text_input(t.get('input_confirmar_senha', "Confirmar senha"), type="password", key="cad_senha2", placeholder=t.get('cad_senha2',"Repita a senha"))
-            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+        email_login = st.text_input(t.get('input_email', "E-mail"), key="login_email", placeholder=t.get('holder_email', "seu@email.com"))
+        senha_login = st.text_input(t.get('input_senha', "Senha"), type="password", key="login_senha", placeholder="••••••••")
+        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
             
-            if st.button(t.get('btn_criar_conta', "Criar minha conta →"), key="btn_cadastro"):
-                erros = []
-                if not all([nome_cad, email_cad, tel_cad, senha_cad, senha_cad2]):
-                    erros.append(t.get('err_campos_vazios', "Preencha todos os campos."))
-                elif not email_valido(email_cad):  erros.append(t.get('err_email_invalido', "E-mail inválido."))
-                elif not telefone_valido(tel_cad): erros.append(t.get('err_tel_invalido', "Telefone inválido."))
-                elif len(senha_cad) < 6:           erros.append(t.get('err_senha_curta', "Senha: mínimo 6 caracteres."))
-                elif senha_cad != senha_cad2:      erros.append(t.get('err_senhas_diferentes', "Senhas não conferem."))
-                if erros:
-                    for e in erros: st.error(e)
+            if st.button(t.get('btn_entrar_seta', "Entrar →"), key="btn_login"):
+                if not email_login or not senha_login:
+                    st.error(t.get('err_preencha_dados', "Preencha e-mail e senha."))
                 else:
-                    ok, msg = criar_usuario(nome_cad, email_cad, senha_cad, tel_cad)
-                    if ok: st.success(t.get('sucesso_conta_criada', "✅ Conta criada! Faça login na aba ao lado."))
-                    else:  st.error(msg)
-                    
-            st.markdown(f"""<div style='text-align:center;margin-top:16px;'>
+                    resultado = autenticar_usuario(email_login, senha_login)
+                    if resultado == "bloqueado":
+                        st.error(t.get('err_bloqueado', "🛑 Acesso Bloqueado! Assinatura expirada ou e-mail não autorizado."))
+                    elif resultado:
+                        st.session_state.usuario_id   = resultado[0]
+                        st.session_state.usuario_nome = resultado[1]
+                        st.query_params["s"] = gerar_token_sessao(resultado[0])
+                        st.rerun()
+                    else:
+                        st.error(t.get('err_dados_invalidos', "E-mail ou senha incorretos."))
+                        
+            st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+            st.markdown('<div class="btn-link">', unsafe_allow_html=True)
+            if st.button(t.get('link_esqueceu', "🔑 Esqueci minha senha"), key="btn_forgot"):
+                st.session_state.reset_step = 1; st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
+            
+            numero_suporte = "5567991158892"
+            msg_wa = t.get('msg_suporte_wa', "Olá! Quero verificar o status do meu acesso no app Gastei.")
+            link_wa = f"https://wa.me/{numero_suporte}?text={msg_wa.replace(' ','%20')}"
+            st.markdown(f"""
+            <div style='text-align:center;margin-top:8px;'>
+                <a href="{link_wa}" target="_blank" style="color:#9b8dff;font-size:13px;text-decoration:none;opacity:0.8;">
+                    🔒 {t.get('link_suporte', 'Problemas com o acesso? — Falar com o Suporte')}</a>
+            </div>
+            <div style='text-align:center;margin-top:8px;'>
                 <a href="https://finatechlab.com/pagina-vendas-gastei/" target="_blank"
                    style="color:#64b5f6;font-size:12px;text-decoration:none;opacity:0.65;">
-                    🛒 {t.get('link_vendas_planos', 'Ainda não comprou? Conheça os planos →')}</a></div>""", unsafe_allow_html=True)
+                    🛒 {t.get('link_vendas', 'Ainda não tem acesso? Conheça o Gastei →')}</a>
+            </div>""", unsafe_allow_html=True)
+            st.markdown("<br>", unsafe_allow_html=True)
+            with st.expander(t.get('expander_termos', "🛡️ Termos de Uso e Política de Privacidade")):
+                st.write(t.get('texto_termos', "Seus dados financeiros são armazenados de forma criptografada e privativa. Não compartilhamos suas informações."))
 
-    st.stop()
+        elif st.session_state.reset_step == 1:
+            st.info(t.get('info_reset_email', "📧 Informe o e-mail cadastrado. Enviaremos um código de 6 dígitos."))
+            email_reset = st.text_input(t.get('input_email_cadastrado', "E-mail cadastrado"), key="reset_email_input", placeholder="seu@email.com")
+            col_env, col_vol = st.columns(2)
+            with col_env:
+                if st.button(t.get('btn_enviar_codigo', "Enviar código →"), key="btn_send_token"):
+                    if not email_valido(email_reset): st.error(t.get('err_email_invalido', "E-mail inválido."))
+                    else:
+                        rows = run_query("SELECT id FROM usuarios WHERE email=%s", (email_reset.strip().lower(),), fetch=True)
+                        if not rows: st.error(t.get('err_email_nao_encontrado', "E-mail não encontrado."))
+                        else:
+                            tok = gerar_token_reset(email_reset)
+                            if tok and enviar_email_reset(email_reset, tok):
+                                st.session_state.reset_email = email_reset.strip().lower()
+                                st.session_state.reset_step  = 2; st.rerun()
+            with col_vol:
+                if st.button(t.get('link_voltar_login', "← Voltar"), key="btn_back_1"):
+                    st.session_state.reset_step = 0; st.rerun()
+
+        elif st.session_state.reset_step == 2:
+            msg_sucesso_cod = t.get('sucesso_codigo_enviado', "✅ Código enviado para **{}**.").format(st.session_state.reset_email)
+            st.success(msg_sucesso_cod)
+            codigo = st.text_input(t.get('input_codigo_digitos', "Código de 6 dígitos"), key="reset_token_input", placeholder="123456", max_chars=6)
+            nova1  = st.text_input(t.get('input_nova_senha', "Nova senha"), type="password", key="reset_pass1", placeholder="Mínimo 6 caracteres")
+            nova2  = st.text_input(t.get('input_confirmar_nova', "Confirmar nova senha"), type="password", key="reset_pass2", placeholder="Repita a senha")
+            col_conf, col_vol2 = st.columns(2)
+            with col_conf:
+                if st.button(t.get('btn_redefinir_senha', "Redefinir senha →"), key="btn_confirm_reset"):
+                    erros = []
+                    if not codigo.strip(): erros.append(t.get('err_informe_codigo', "Informe o código."))
+                    if len(nova1) < 6:     erros.append(t.get('err_senha_curta', "Mínimo 6 caracteres."))
+                    if nova1 != nova2:     erros.append(t.get('err_senhas_diferentes', "Senhas não conferem."))
+                    if erros:
+                        for e in erros: st.error(e)
+                    elif not validar_token_reset(st.session_state.reset_email, codigo):
+                        st.error(t.get('err_codigo_expirado', "Código inválido ou expirado."))
+                    else:
+                        if trocar_senha(st.session_state.reset_email, nova1):
+                            consumir_token_reset(st.session_state.reset_email, codigo)
+                            st.success(t.get('sucesso_senha_redefinida', "🎉 Senha redefinida! Faça login."))
+                            st.session_state.reset_step = 0; st.session_state.reset_email = ""; st.rerun()
+            with col_vol2:
+                if st.button(t.get('link_voltar_login', "← Voltar"), key="btn_back_2"):
+                    st.session_state.reset_step = 1; st.rerun()
+
+    with aba_cadastro:
+        st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+        nome_cad   = st.text_input(t.get('input_nome', "Seu nome"),            key="cad_nome",   placeholder="João Silva")
+        email_cad  = st.text_input(t.get('input_email', "E-mail"),              key="cad_email",  placeholder=t.get('email_cad', "O mesmo e-mail usado na compra"))
+        tel_cad    = st.text_input(t.get('input_telefone', "WhatsApp / Telefone"), key="cad_tel",    placeholder="(67) 99999-9999")
+        senha_cad  = st.text_input(t.get('input_senha', "Senha"),           type="password", key="cad_senha",  placeholder=t.get('err_senha_curta',"Mínimo 6 caracteres"))
+        senha_cad2 = st.text_input(t.get('input_confirmar_senha', "Confirmar senha"), type="password", key="cad_senha2", placeholder=t.get('cad_senha2',"Repita a senha"))
+        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+        
+        if st.button(t.get('btn_criar_conta', "Criar minha conta →"), key="btn_cadastro"):
+            erros = []
+            if not all([nome_cad, email_cad, tel_cad, senha_cad, senha_cad2]):
+                erros.append(t.get('err_campos_vazios', "Preencha todos os campos."))
+            elif not email_valido(email_cad):  erros.append(t.get('err_email_invalido', "E-mail inválido."))
+            elif not telefone_valido(tel_cad): erros.append(t.get('err_tel_invalido', "Telefone inválido."))
+            elif len(senha_cad) < 6:           erros.append(t.get('err_senha_curta', "Senha: mínimo 6 caracteres."))
+            elif senha_cad != senha_cad2:      erros.append(t.get('err_senhas_diferentes', "Senhas não conferem."))
+            if erros:
+                for e in erros: st.error(e)
+            else:
+                ok, msg = criar_usuario(nome_cad, email_cad, senha_cad, tel_cad)
+                if ok: st.success(t.get('sucesso_conta_criada', "✅ Conta criada! Faça login na aba ao lado."))
+                else:  st.error(msg)
+                
+        st.markdown(f"""<div style='text-align:center;margin-top:16px;'>
+            <a href="https://finatechlab.com/pagina-vendas-gastei/" target="_blank"
+               style="color:#64b5f6;font-size:12px;text-decoration:none;opacity:0.65;">
+                🛒 {t.get('link_vendas_planos', 'Ainda não comprou? Conheça os planos →')}</a></div>""", unsafe_allow_html=True)
+
+st.stop()
 
 # ═════════════════════════════════════════════
 #  APP PRINCIPAL
@@ -1524,52 +1524,52 @@ st.query_params["s"] = gerar_token_sessao(uid)
 # MISSÃO 1 — Carrega salário do banco UMA VEZ por sessão logo após o login
 # ─────────────────────────────────────────────
 if not st.session_state._salario_carregado:
-    st.session_state.salario = buscar_salario_db(uid)
-    st.session_state._salario_carregado = True
+st.session_state.salario = buscar_salario_db(uid)
+st.session_state._salario_carregado = True
 
 # ─────────────────────────────────────────────
 #  SIDEBAR / SELETOR DE IDIOMA GLOBAL
 # ─────────────────────────────────────────────
 with st.sidebar:
-    t = get_t()
-    st.markdown(f"### {t.get('idioma_label', '🌐 Idioma / Language')}")
-    
-    # 1. Calcula dinamicamente o índice inicial correto para o componente
-    _indice_padrao = 0
-    if st.session_state.lang == "EN":
-        _indice_padrao = 1
-    elif st.session_state.lang == "FR":
-        _indice_padrao = 2
-        
-    # 2. Componente de Seleção Limpo e Unificado
-    _smap = {"🇧🇷 Português": "PT", "🇺🇸 English": "EN", "🇫🇷 Français": "FR"}
-    _sel_idioma_sidebar = st.selectbox(
-        label="Select Language",
-        options=list(_smap.keys()),
-        index=_indice_padrao,
-        key="seletor_idioma",  # Chave lida pelo interceptador do topo do arquivo
-        label_visibility="collapsed"
-    )
-    
-    # 3. Faz a mudança em tempo de execução de forma limpa
-    _novo_lang = _smap[_sel_idioma_sidebar]
-    if _novo_lang != st.session_state.lang:
-        st.session_state.lang = _novo_lang
-        st.rerun()
+t = get_t()
+st.markdown(f"### {t.get('idioma_label', '🌐 Idioma / Language')}")
 
-    st.markdown("---")
+# 1. Calcula dinamicamente o índice inicial correto para o componente
+_indice_padrao = 0
+if st.session_state.lang == "EN":
+    _indice_padrao = 1
+elif st.session_state.lang == "FR":
+    _indice_padrao = 2
     
-    # MISSÃO 1 — Salário na sidebar (Apenas visível se logado, usando tratamento seguro .get)
-    st.markdown(f"### {t.get('salario_titulo', 'Salário Atual')}")
-    _sal_sb = st.number_input(
-        t.get('salario_input', 'Valor'), min_value=0.0, step=100.0, format="%.2f",
-        value=float(st.session_state.salario),
-        key="input_salario_sidebar", label_visibility="collapsed"
-    )
-    if st.button(t.get('salario_btn', 'Salvar Salário'), key="btn_sal_sidebar"):
-        if 'uid' in locals() or 'uid' in globals():
-            if salvar_salario_db(st.session_state.usuario_id, _sal_sb):
-                st.success(t.get('salario_salvo', 'Salvo com sucesso!'))
+# 2. Componente de Seleção Limpo e Unificado
+_smap = {"🇧🇷 Português": "PT", "🇺🇸 English": "EN", "🇫🇷 Français": "FR"}
+_sel_idioma_sidebar = st.selectbox(
+    label="Select Language",
+    options=list(_smap.keys()),
+    index=_indice_padrao,
+    key="seletor_idioma",  # Chave lida pelo interceptador do topo do arquivo
+    label_visibility="collapsed"
+)
+
+# 3. Faz a mudança em tempo de execução de forma limpa
+_novo_lang = _smap[_sel_idioma_sidebar]
+if _novo_lang != st.session_state.lang:
+    st.session_state.lang = _novo_lang
+    st.rerun()
+
+st.markdown("---")
+
+# MISSÃO 1 — Salário na sidebar (Apenas visível se logado, usando tratamento seguro .get)
+st.markdown(f"### {t.get('salario_titulo', 'Salário Atual')}")
+_sal_sb = st.number_input(
+    t.get('salario_input', 'Valor'), min_value=0.0, step=100.0, format="%.2f",
+    value=float(st.session_state.salario),
+    key="input_salario_sidebar", label_visibility="collapsed"
+)
+if st.button(t.get('salario_btn', 'Salvar Salário'), key="btn_sal_sidebar"):
+    if 'uid' in locals() or 'uid' in globals():
+        if salvar_salario_db(st.session_state.usuario_id, _sal_sb):
+            st.success(t.get('salario_salvo', 'Salvo com sucesso!'))
 
 # ── Recarrega t após possível mudança na sidebar ──
 t = get_t()
@@ -1579,70 +1579,70 @@ t = get_t()
 # ─────────────────────────────────────────────
 col_titulo, col_usuario, col_pref, col_logout = st.columns([5, 2, 0.6, 0.8])
 with col_titulo:
-    st.markdown("# GASTEI ⚡")
-    st.markdown(f"<p style='color:#6b7280;margin-top:-12px;margin-bottom:28px;'>{t.get('app_subtitle', '')}</p>", unsafe_allow_html=True)
+st.markdown("# GASTEI ⚡")
+st.markdown(f"<p style='color:#6b7280;margin-top:-12px;margin-bottom:28px;'>{t.get('app_subtitle', '')}</p>", unsafe_allow_html=True)
 
 with col_usuario:
-    st.markdown(f"<div style='text-align:right;padding-top:18px;font-size:13px;color:#9ca3af;'>{t.get('ola', 'Olá')}, <strong style='color:#c4b5fd'>{st.session_state.usuario_nome}</strong> 👋</div>", unsafe_allow_html=True)
+st.markdown(f"<div style='text-align:right;padding-top:18px;font-size:13px;color:#9ca3af;'>{t.get('ola', 'Olá')}, <strong style='color:#c4b5fd'>{st.session_state.usuario_nome}</strong> 👋</div>", unsafe_allow_html=True)
 
 with col_pref:
-    st.markdown("<div style='padding-top:14px'></div>", unsafe_allow_html=True)
-    st.markdown('<div class="pref-btn">', unsafe_allow_html=True)
-    if st.button("⚙️", key="btn_pref_toggle"):
-        st.session_state.pref_aberto = not st.session_state.pref_aberto
-        st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
+st.markdown("<div style='padding-top:14px'></div>", unsafe_allow_html=True)
+st.markdown('<div class="pref-btn">', unsafe_allow_html=True)
+if st.button("⚙️", key="btn_pref_toggle"):
+    st.session_state.pref_aberto = not st.session_state.pref_aberto
+    st.rerun()
+st.markdown('</div>', unsafe_allow_html=True)
 
 with col_logout:
-    st.markdown("<div style='padding-top:14px'></div>", unsafe_allow_html=True)
-    st.markdown('<div class="logout-btn">', unsafe_allow_html=True)
-    if st.button(t.get('sair', 'Sair'), key="btn_logout"):
-        for k in ["usuario_id", "usuario_nome", "salario", "pref_aberto", "_salario_carregado"]:
-            if k in ("usuario_id", "usuario_nome"): 
-                st.session_state[k] = None
-            elif k == "pref_aberto":               
-                st.session_state[k] = False
-            elif k == "_salario_carregado":        
-                st.session_state[k] = False
-            else:                                  
-                st.session_state[k] = 0.0
-        st.query_params.clear()
-        st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
+st.markdown("<div style='padding-top:14px'></div>", unsafe_allow_html=True)
+st.markdown('<div class="logout-btn">', unsafe_allow_html=True)
+if st.button(t.get('sair', 'Sair'), key="btn_logout"):
+    for k in ["usuario_id", "usuario_nome", "salario", "pref_aberto", "_salario_carregado"]:
+        if k in ("usuario_id", "usuario_nome"): 
+            st.session_state[k] = None
+        elif k == "pref_aberto":               
+            st.session_state[k] = False
+        elif k == "_salario_carregado":        
+            st.session_state[k] = False
+        else:                                  
+            st.session_state[k] = 0.0
+    st.query_params.clear()
+    st.rerun()
+st.markdown('</div>', unsafe_allow_html=True)
 # ── Painel ⚙️ inline ─────────────────────────────
 if st.session_state.pref_aberto:
-    st.markdown('<div class="pref-panel">', unsafe_allow_html=True)
-    _pc1, _pc2, _pc3 = st.columns([1.2, 1.5, 0.6])
-    with _pc1:
-        # MISSÃO 2 — radio dentro do painel usa key estática (compartilhada com sidebar via session_state)
-        st.markdown(f"<p style='color:#9b8dff;font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:6px;'>{t['idioma_label']}</p>", unsafe_allow_html=True)
-        _pmap = {"Português": "PT", "English": "EN", "Français": "FR"}
-        _psel = st.radio(
-            "lang_panel", options=list(_pmap.keys()),
-            index=list(_pmap.values()).index(st.session_state.lang),
-            key="lang_radio_panel", label_visibility="collapsed"
-        )
-        _novo_lang_panel = _pmap[_psel]
-        if _novo_lang_panel != st.session_state.lang:
-            st.session_state.lang = _novo_lang_panel
-            st.rerun()
-        t = get_t()
-    with _pc2:
-        # MISSÃO 1 — salário no painel: só salva no DB ao clicar no botão
-        st.markdown(f"<p style='color:#9b8dff;font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:6px;'>💰 {t['salario_titulo']}</p>", unsafe_allow_html=True)
-        _sal_p = st.number_input(
-            t["salario_input"], min_value=0.0, step=100.0, format="%.2f",
-            value=float(st.session_state.salario),
-            key="sal_panel", label_visibility="collapsed"
-        )
-        if st.button(t["salario_btn"], key="btn_sal_panel"):
-            if salvar_salario_db(uid, _sal_p):
-                st.success(t["salario_salvo"])
-    with _pc3:
-        st.markdown("<div style='padding-top:26px'></div>", unsafe_allow_html=True)
-        if st.button(f"✕ {t['pref_fechar']}", key="btn_pref_close"):
-            st.session_state.pref_aberto = False; st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
+st.markdown('<div class="pref-panel">', unsafe_allow_html=True)
+_pc1, _pc2, _pc3 = st.columns([1.2, 1.5, 0.6])
+with _pc1:
+    # MISSÃO 2 — radio dentro do painel usa key estática (compartilhada com sidebar via session_state)
+    st.markdown(f"<p style='color:#9b8dff;font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:6px;'>{t['idioma_label']}</p>", unsafe_allow_html=True)
+    _pmap = {"Português": "PT", "English": "EN", "Français": "FR"}
+    _psel = st.radio(
+        "lang_panel", options=list(_pmap.keys()),
+        index=list(_pmap.values()).index(st.session_state.lang),
+        key="lang_radio_panel", label_visibility="collapsed"
+    )
+    _novo_lang_panel = _pmap[_psel]
+    if _novo_lang_panel != st.session_state.lang:
+        st.session_state.lang = _novo_lang_panel
+        st.rerun()
+    t = get_t()
+with _pc2:
+    # MISSÃO 1 — salário no painel: só salva no DB ao clicar no botão
+    st.markdown(f"<p style='color:#9b8dff;font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:6px;'>💰 {t['salario_titulo']}</p>", unsafe_allow_html=True)
+    _sal_p = st.number_input(
+        t["salario_input"], min_value=0.0, step=100.0, format="%.2f",
+        value=float(st.session_state.salario),
+        key="sal_panel", label_visibility="collapsed"
+    )
+    if st.button(t["salario_btn"], key="btn_sal_panel"):
+        if salvar_salario_db(uid, _sal_p):
+            st.success(t["salario_salvo"])
+with _pc3:
+    st.markdown("<div style='padding-top:26px'></div>", unsafe_allow_html=True)
+    if st.button(f"✕ {t['pref_fechar']}", key="btn_pref_close"):
+        st.session_state.pref_aberto = False; st.rerun()
+st.markdown('</div>', unsafe_allow_html=True)
 
 # ── Abas principais ─────────────────────────────
 aba_principal, aba_feedback = st.tabs([t["aba_gastos"], t["aba_feedback"]])
@@ -1651,269 +1651,269 @@ aba_principal, aba_feedback = st.tabs([t["aba_gastos"], t["aba_feedback"]])
 # ABA 1 — GASTOS
 # ══════════════════════════════
 with aba_principal:
-    # MISSÃO 3 — uma única chamada cacheada; df_all é reutilizado tanto nos cards quanto no histórico
-    df_all       = carregar_lancamentos(uid)
-    total_saidas = df_all["valor_total"].astype(float).sum() if not df_all.empty else 0.0
-    gasto_mensal = calcular_gasto_mensal(df_all) if not df_all.empty else 0.0
-    salario      = float(st.session_state.salario)
+# MISSÃO 3 — uma única chamada cacheada; df_all é reutilizado tanto nos cards quanto no histórico
+df_all       = carregar_lancamentos(uid)
+total_saidas = df_all["valor_total"].astype(float).sum() if not df_all.empty else 0.0
+gasto_mensal = calcular_gasto_mensal(df_all) if not df_all.empty else 0.0
+salario      = float(st.session_state.salario)
 
-    # ── 3 cards de resumo ──────────────────────
-    col_a, col_b, col_c = st.columns(3)
-    with col_a:
-        st.markdown(f"""<div class="total-card">
-            <div><div class="total-label">{t['total_saidas']}</div>
-                 <div class="total-value">R$ {total_saidas:,.2f}</div></div>
-            <div class="total-icon">📊</div></div>""", unsafe_allow_html=True)
-    with col_b:
-        st.markdown(f"""<div class="parcela-card">
-            <div><div class="parcela-label">{t['comprometido_mes']}</div>
-                 <div class="parcela-value">R$ {gasto_mensal:,.2f}</div></div>
-            <div style="font-size:48px;opacity:0.4;">📅</div></div>""", unsafe_allow_html=True)
-    with col_c:
-        if salario > 0:
-            pct  = (gasto_mensal / salario) * 100
-            cls  = "salario-card alerta" if pct >= 70 else "salario-card"
-            icon = "🚨" if pct >= 70 else "💰"
-            st.markdown(f"""<div class="{cls}">
-                <div><div class="salario-label">{t['salario_comprometido']}</div>
-                     <div class="salario-value">{pct:.1f}%</div>
-                     <div style="font-size:11px;color:#6b7280;margin-top:4px;">{t['pct_label']}</div></div>
-                <div style="font-size:48px;opacity:0.5;">{icon}</div></div>""", unsafe_allow_html=True)
-        else:
-            st.markdown(f"""<div class="salario-card" style="opacity:0.55;">
-                <div><div class="salario-label">{t['salario_comprometido']}</div>
-                     <div class="salario-value">--%</div></div>
-                <div style="font-size:48px;opacity:0.3;">💰</div></div>""", unsafe_allow_html=True)
-            st.caption(t["salario_zero_aviso"])
-
-    # ── Formulário novo lançamento ─────────────
-    # MISSÃO 3 — st.form isola todos os inputs; o Streamlit só re-renderiza
-    #            a simulação ao submeter, eliminando reruns a cada dígito digitado.
-    #            A simulação leve fica em st.empty() fora do form para feedback visual.
-    st.markdown(f"### {t['novo_lancamento']}")
-    st.markdown('<div class="form-section">', unsafe_allow_html=True)
-
-    _sim_placeholder = st.empty()   # exibe prévia da simulação ACIMA do form (sem travar inputs)
-
-    with st.form("form_novo_lancamento", clear_on_submit=True):
-        col1, col2 = st.columns([2, 1])
-        with col1:
-            descricao = st.text_input(t["o_que_comprou"], placeholder=t["placeholder_desc"])
-        with col2:
-            valor_total = st.number_input(t["valor_total"], min_value=0.0, step=0.01, format="%.2f", value=0.0)
-
-        is_recorrente = st.checkbox(t["conta_fixa"])
-
-        if is_recorrente:
-            col4, _ = st.columns([1, 2])
-            with col4:
-                inicio_pagamento = st.date_input(t["dia_vencimento"], value=date.today(), format="DD/MM/YYYY")
-            parcelas_totais = 0; final_pagamento = None
-            # Prévia apenas se campos preenchidos — dentro do form é estático até Submit
-            if descricao and valor_total > 0:
-                proxima_rec = calcular_proxima_recorrente(inicio_pagamento)
-                st.markdown("<hr>", unsafe_allow_html=True)
-                pc1, pc2, pc3 = st.columns(3)
-                with pc1: st.markdown(f"{t['valor_mensal']} `R$ {valor_total:,.2f}`")
-                with pc2: st.markdown(f"{t['tipo_recorrente']} `🔁 Recorrente`")
-                with pc3: st.markdown(f"{t['prox_vencimento']} `{proxima_rec.strftime('%d/%m/%Y')}`")
-        else:
-            col3, col4 = st.columns(2)
-            with col3:
-                parcelas_totais = st.number_input(t["num_parcelas"], min_value=1, max_value=360, step=1, value=1)
-            with col4:
-                inicio_pagamento = st.date_input(t["data_primeiro_venc"], value=date.today(), format="DD/MM/YYYY")
-            final_pagamento = None
-            if descricao and valor_total > 0:
-                val_p = calcular_valor_parcela(valor_total, parcelas_totais)
-                st.markdown("<hr>", unsafe_allow_html=True)
-                pc1, pc2, pc3 = st.columns(3)
-                with pc1: st.markdown(f"{t['valor_parcela']} `R$ {val_p:.2f}`")
-                with pc2: st.markdown(f"{t['parcelas_restantes']} `{parcelas_totais}x`")
-                with pc3: st.markdown(f"{t['venc_parcela1']} `{inicio_pagamento.strftime('%d/%m/%Y')}`")
-
-        # ── SIMULAÇÃO DE IMPACTO (dentro do form — processa ao Submit) ──
-        if valor_total > 0 and salario > 0:
-            parc_sim    = parcelas_totais if (parcelas_totais and not is_recorrente) else 1
-            mensal_novo = valor_total / parc_sim if parc_sim > 0 else valor_total
-            total_sim   = gasto_mensal + mensal_novo
-            pct_sim     = (total_sim / salario) * 100
-            st.markdown(t["sim_info"].format(total_sim, pct_sim))
-            if pct_sim > 70:
-                st.markdown(f"""<div class="alerta-simulacao">
-                    <span class="pct-destaque">⚠️ {pct_sim:.1f}%</span>
-                    {t["sim_alerta"].format(pct_sim)}
-                </div>""", unsafe_allow_html=True)
-            else:
-                st.success(t["sim_ok"])
-        elif valor_total > 0 and salario == 0:
-            st.caption(t["salario_zero_aviso"])
-
-        col_btn, _ = st.columns([1, 3])
-        with col_btn:
-            submitted = st.form_submit_button(t["salvar_lancamento"])
-
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    # ── Processa o submit FORA do form (sem bloquear re-render do form) ──
-    if submitted:
-        erros = []
-        if not descricao.strip(): erros.append(t["err_descricao"])
-        if valor_total <= 0:      erros.append(t["err_valor"])
-        if erros:
-            for e in erros: st.error(e)
-        else:
-            inserir_lancamento(uid, descricao.strip(), valor_total, parcelas_totais,
-                               inicio_pagamento, final_pagamento, is_recorrente)
-            st.success(t["salvo_sucesso"].format(descricao))
-            st.rerun()
-
-    # ── Histórico ──────────────────────────────
-    # MISSÃO 3 — reutiliza df_all já cacheado; não faz segunda consulta ao banco
-    st.markdown(t["historico"])
-    df = df_all.copy()
-    if df.empty:
-        st.markdown(f"<div style='text-align:center;padding:60px 20px;color:#4b5563;'><div style='font-size:48px;'>📭</div>{t['nenhum_lancamento']}</div>", unsafe_allow_html=True)
+# ── 3 cards de resumo ──────────────────────
+col_a, col_b, col_c = st.columns(3)
+with col_a:
+    st.markdown(f"""<div class="total-card">
+        <div><div class="total-label">{t['total_saidas']}</div>
+             <div class="total-value">R$ {total_saidas:,.2f}</div></div>
+        <div class="total-icon">📊</div></div>""", unsafe_allow_html=True)
+with col_b:
+    st.markdown(f"""<div class="parcela-card">
+        <div><div class="parcela-label">{t['comprometido_mes']}</div>
+             <div class="parcela-value">R$ {gasto_mensal:,.2f}</div></div>
+        <div style="font-size:48px;opacity:0.4;">📅</div></div>""", unsafe_allow_html=True)
+with col_c:
+    if salario > 0:
+        pct  = (gasto_mensal / salario) * 100
+        cls  = "salario-card alerta" if pct >= 70 else "salario-card"
+        icon = "🚨" if pct >= 70 else "💰"
+        st.markdown(f"""<div class="{cls}">
+            <div><div class="salario-label">{t['salario_comprometido']}</div>
+                 <div class="salario-value">{pct:.1f}%</div>
+                 <div style="font-size:11px;color:#6b7280;margin-top:4px;">{t['pct_label']}</div></div>
+            <div style="font-size:48px;opacity:0.5;">{icon}</div></div>""", unsafe_allow_html=True)
     else:
-        busca = st.text_input(t["filtrar"], placeholder=t["placeholder_busca"], key="busca")
-        if busca.strip():
-            df = df[df["descricao"].str.contains(busca.strip(), case=False, na=False)]
+        st.markdown(f"""<div class="salario-card" style="opacity:0.55;">
+            <div><div class="salario-label">{t['salario_comprometido']}</div>
+                 <div class="salario-value">--%</div></div>
+            <div style="font-size:48px;opacity:0.3;">💰</div></div>""", unsafe_allow_html=True)
+        st.caption(t["salario_zero_aviso"])
 
-        hoje = date.today()
-        df["_pago"] = df["pago"].astype(bool)
-        df["_rec"]  = df["recorrente"].astype(int) == 1
-        df["_venc"] = df.apply(lambda r: calcular_proxima_recorrente(to_date(r["inicio_pagamento"]))
-                                if r["_rec"] else to_date(r["inicio_pagamento"]), axis=1)
-        def _grp(row):
-            if row["_pago"]: return (4, date(9999,12,31))
-            v = row["_venc"]
-            if v < hoje:                          return (0, v)
-            if v == hoje:                         return (1, v)
-            if v <= hoje + timedelta(days=3):     return (2, v)
-            return (3, v)
-        df["_sort"] = df.apply(_grp, axis=1)
-        df = df.sort_values("_sort").drop(columns=["_pago","_rec","_venc","_sort"])
+# ── Formulário novo lançamento ─────────────
+# MISSÃO 3 — st.form isola todos os inputs; o Streamlit só re-renderiza
+#            a simulação ao submeter, eliminando reruns a cada dígito digitado.
+#            A simulação leve fica em st.empty() fora do form para feedback visual.
+st.markdown(f"### {t['novo_lancamento']}")
+st.markdown('<div class="form-section">', unsafe_allow_html=True)
 
-        # ── Banners de alerta ──
-        _ativos   = ~df["pago"].astype(bool)
-        _vc       = df.apply(lambda r: calcular_proxima_recorrente(to_date(r["inicio_pagamento"]))
-                             if int(r["recorrente"]) == 1 else to_date(r["inicio_pagamento"]), axis=1)
-        n_atr  = int((_ativos & (_vc < hoje)).sum())
-        n_hj   = int((_ativos & (_vc == hoje)).sum())
-        n_brv  = int((_ativos & (_vc > hoje) & (_vc <= hoje + timedelta(days=3))).sum())
+_sim_placeholder = st.empty()   # exibe prévia da simulação ACIMA do form (sem travar inputs)
 
-        if n_atr:
-            pl = t["conta_atrasada_s"] if n_atr == 1 else t["conta_atrasada_p"]
-            st.markdown(f"""<div class="alerta-banner">
-                🚨 <span class="count">{n_atr}</span> {pl} — {t['alerta_atrasada_sufixo']}
+with st.form("form_novo_lancamento", clear_on_submit=True):
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        descricao = st.text_input(t["o_que_comprou"], placeholder=t["placeholder_desc"])
+    with col2:
+        valor_total = st.number_input(t["valor_total"], min_value=0.0, step=0.01, format="%.2f", value=0.0)
+
+    is_recorrente = st.checkbox(t["conta_fixa"])
+
+    if is_recorrente:
+        col4, _ = st.columns([1, 2])
+        with col4:
+            inicio_pagamento = st.date_input(t["dia_vencimento"], value=date.today(), format="DD/MM/YYYY")
+        parcelas_totais = 0; final_pagamento = None
+        # Prévia apenas se campos preenchidos — dentro do form é estático até Submit
+        if descricao and valor_total > 0:
+            proxima_rec = calcular_proxima_recorrente(inicio_pagamento)
+            st.markdown("<hr>", unsafe_allow_html=True)
+            pc1, pc2, pc3 = st.columns(3)
+            with pc1: st.markdown(f"{t['valor_mensal']} `R$ {valor_total:,.2f}`")
+            with pc2: st.markdown(f"{t['tipo_recorrente']} `🔁 Recorrente`")
+            with pc3: st.markdown(f"{t['prox_vencimento']} `{proxima_rec.strftime('%d/%m/%Y')}`")
+    else:
+        col3, col4 = st.columns(2)
+        with col3:
+            parcelas_totais = st.number_input(t["num_parcelas"], min_value=1, max_value=360, step=1, value=1)
+        with col4:
+            inicio_pagamento = st.date_input(t["data_primeiro_venc"], value=date.today(), format="DD/MM/YYYY")
+        final_pagamento = None
+        if descricao and valor_total > 0:
+            val_p = calcular_valor_parcela(valor_total, parcelas_totais)
+            st.markdown("<hr>", unsafe_allow_html=True)
+            pc1, pc2, pc3 = st.columns(3)
+            with pc1: st.markdown(f"{t['valor_parcela']} `R$ {val_p:.2f}`")
+            with pc2: st.markdown(f"{t['parcelas_restantes']} `{parcelas_totais}x`")
+            with pc3: st.markdown(f"{t['venc_parcela1']} `{inicio_pagamento.strftime('%d/%m/%Y')}`")
+
+    # ── SIMULAÇÃO DE IMPACTO (dentro do form — processa ao Submit) ──
+    if valor_total > 0 and salario > 0:
+        parc_sim    = parcelas_totais if (parcelas_totais and not is_recorrente) else 1
+        mensal_novo = valor_total / parc_sim if parc_sim > 0 else valor_total
+        total_sim   = gasto_mensal + mensal_novo
+        pct_sim     = (total_sim / salario) * 100
+        st.markdown(t["sim_info"].format(total_sim, pct_sim))
+        if pct_sim > 70:
+            st.markdown(f"""<div class="alerta-simulacao">
+                <span class="pct-destaque">⚠️ {pct_sim:.1f}%</span>
+                {t["sim_alerta"].format(pct_sim)}
             </div>""", unsafe_allow_html=True)
-        if n_hj:
-            pl = t["conta_hoje_s"] if n_hj == 1 else t["conta_hoje_p"]
-            st.markdown(f"""<div class="hoje-banner">
-                🔥 <span style="background:#f97316;color:#fff;border-radius:999px;padding:1px 8px;font-weight:800;">{n_hj}</span>
-                {pl} — {t['alerta_hoje_sufixo']}
-            </div>""", unsafe_allow_html=True)
-        if n_brv and not n_atr and not n_hj:
-            pl = t["conta_breve_s"] if n_brv == 1 else t["conta_breve_p"]
-            st.markdown(f"""<div style="display:flex;align-items:center;gap:8px;background:rgba(234,179,8,0.09);
-                border:1px solid rgba(234,179,8,0.3);border-radius:10px;padding:7px 14px;
-                font-size:11px;font-weight:700;color:#fde047;margin-bottom:8px;">
-                ⚡ {n_brv} {pl} — {t['alerta_breve_sufixo']}
-            </div>""", unsafe_allow_html=True)
+        else:
+            st.success(t["sim_ok"])
+    elif valor_total > 0 and salario == 0:
+        st.caption(t["salario_zero_aviso"])
 
-        st.markdown(f"""<div style="display:grid;grid-template-columns:2.2fr 1fr 1fr 1fr 0.8fr;
-            padding:10px 24px;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:1px;">
-            <div>{t['col_descricao']}</div><div>{t['col_valor']}</div>
-            <div>{t['col_vencimento']}</div><div>{t['col_situacao']}</div>
-            <div style="text-align:center">{t['col_acoes']}</div>
+    col_btn, _ = st.columns([1, 3])
+    with col_btn:
+        submitted = st.form_submit_button(t["salvar_lancamento"])
+
+st.markdown('</div>', unsafe_allow_html=True)
+
+# ── Processa o submit FORA do form (sem bloquear re-render do form) ──
+if submitted:
+    erros = []
+    if not descricao.strip(): erros.append(t["err_descricao"])
+    if valor_total <= 0:      erros.append(t["err_valor"])
+    if erros:
+        for e in erros: st.error(e)
+    else:
+        inserir_lancamento(uid, descricao.strip(), valor_total, parcelas_totais,
+                           inicio_pagamento, final_pagamento, is_recorrente)
+        st.success(t["salvo_sucesso"].format(descricao))
+        st.rerun()
+
+# ── Histórico ──────────────────────────────
+# MISSÃO 3 — reutiliza df_all já cacheado; não faz segunda consulta ao banco
+st.markdown(t["historico"])
+df = df_all.copy()
+if df.empty:
+    st.markdown(f"<div style='text-align:center;padding:60px 20px;color:#4b5563;'><div style='font-size:48px;'>📭</div>{t['nenhum_lancamento']}</div>", unsafe_allow_html=True)
+else:
+    busca = st.text_input(t["filtrar"], placeholder=t["placeholder_busca"], key="busca")
+    if busca.strip():
+        df = df[df["descricao"].str.contains(busca.strip(), case=False, na=False)]
+
+    hoje = date.today()
+    df["_pago"] = df["pago"].astype(bool)
+    df["_rec"]  = df["recorrente"].astype(int) == 1
+    df["_venc"] = df.apply(lambda r: calcular_proxima_recorrente(to_date(r["inicio_pagamento"]))
+                            if r["_rec"] else to_date(r["inicio_pagamento"]), axis=1)
+    def _grp(row):
+        if row["_pago"]: return (4, date(9999,12,31))
+        v = row["_venc"]
+        if v < hoje:                          return (0, v)
+        if v == hoje:                         return (1, v)
+        if v <= hoje + timedelta(days=3):     return (2, v)
+        return (3, v)
+    df["_sort"] = df.apply(_grp, axis=1)
+    df = df.sort_values("_sort").drop(columns=["_pago","_rec","_venc","_sort"])
+
+    # ── Banners de alerta ──
+    _ativos   = ~df["pago"].astype(bool)
+    _vc       = df.apply(lambda r: calcular_proxima_recorrente(to_date(r["inicio_pagamento"]))
+                         if int(r["recorrente"]) == 1 else to_date(r["inicio_pagamento"]), axis=1)
+    n_atr  = int((_ativos & (_vc < hoje)).sum())
+    n_hj   = int((_ativos & (_vc == hoje)).sum())
+    n_brv  = int((_ativos & (_vc > hoje) & (_vc <= hoje + timedelta(days=3))).sum())
+
+    if n_atr:
+        pl = t["conta_atrasada_s"] if n_atr == 1 else t["conta_atrasada_p"]
+        st.markdown(f"""<div class="alerta-banner">
+            🚨 <span class="count">{n_atr}</span> {pl} — {t['alerta_atrasada_sufixo']}
+        </div>""", unsafe_allow_html=True)
+    if n_hj:
+        pl = t["conta_hoje_s"] if n_hj == 1 else t["conta_hoje_p"]
+        st.markdown(f"""<div class="hoje-banner">
+            🔥 <span style="background:#f97316;color:#fff;border-radius:999px;padding:1px 8px;font-weight:800;">{n_hj}</span>
+            {pl} — {t['alerta_hoje_sufixo']}
+        </div>""", unsafe_allow_html=True)
+    if n_brv and not n_atr and not n_hj:
+        pl = t["conta_breve_s"] if n_brv == 1 else t["conta_breve_p"]
+        st.markdown(f"""<div style="display:flex;align-items:center;gap:8px;background:rgba(234,179,8,0.09);
+            border:1px solid rgba(234,179,8,0.3);border-radius:10px;padding:7px 14px;
+            font-size:11px;font-weight:700;color:#fde047;margin-bottom:8px;">
+            ⚡ {n_brv} {pl} — {t['alerta_breve_sufixo']}
         </div>""", unsafe_allow_html=True)
 
-        for _, row in df.iterrows():
-            id_           = row["id"]
-            desc          = row["descricao"]
-            v_tot         = float(row["valor_total"])
-            parc_tot      = int(row["parcelas_totais"])
-            parc_pagas    = int(row.get("parcelas_pagas", 0))
-            parc_rest     = max(0, parc_tot - parc_pagas)
-            eh_fixa       = int(row["recorrente"]) == 1
-            pago_fim      = bool(row["pago"])
-            val_exibir    = v_tot if eh_fixa else calcular_valor_parcela(v_tot, parc_tot)
-            venc_data     = calcular_proxima_recorrente(to_date(row["inicio_pagamento"])) if eh_fixa else to_date(row["inicio_pagamento"])
+    st.markdown(f"""<div style="display:grid;grid-template-columns:2.2fr 1fr 1fr 1fr 0.8fr;
+        padding:10px 24px;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:1px;">
+        <div>{t['col_descricao']}</div><div>{t['col_valor']}</div>
+        <div>{t['col_vencimento']}</div><div>{t['col_situacao']}</div>
+        <div style="text-align:center">{t['col_acoes']}</div>
+    </div>""", unsafe_allow_html=True)
 
-            col_r1, col_r2, col_r3, col_r4, col_r5 = st.columns([2.2, 1, 1, 1, 0.8])
-            with col_r1:
-                sub = f"{t['total_label']} R$ {v_tot:,.2f} · {t['inicio_label']} {to_date(row['inicio_pagamento']).strftime('%d/%m/%Y')}" if not eh_fixa else t["conta_mensal_fixa"]
-                st.markdown(f"<div style='padding-top:12px'><strong style='color:#fff;font-size:15px;'>{desc}</strong><br><span style='color:#6b7280;font-size:11px;'>{sub}</span></div>", unsafe_allow_html=True)
-            with col_r2:
-                lbl = t["label_mensal"] if eh_fixa else t["label_parcela"]
-                st.markdown(f"<div style='padding-top:12px'><strong style='font-family:JetBrains Mono;color:#9b8dff;font-size:16px;'>R$ {val_exibir:,.2f}</strong><br><span style='color:#6b7280;font-size:11px;'>{lbl}</span></div>", unsafe_allow_html=True)
-            with col_r3:
-                if pago_fim:
-                    st.markdown("<div style='padding-top:18px'><span class='badge-pago'>Concluído ✅</span></div>", unsafe_allow_html=True)
-                elif venc_data == hoje:
-                    st.markdown(f"<div style='padding-top:18px'><span class='badge-hoje'>🔥 HOJE ({venc_data.strftime('%d/%m/%Y')})</span></div>", unsafe_allow_html=True)
-                elif venc_data < hoje:
-                    st.markdown(f"<div style='padding-top:18px'><span class='badge-urgente'>⚠️ ATRASADO ({venc_data.strftime('%d/%m/%Y')})</span></div>", unsafe_allow_html=True)
-                elif venc_data <= hoje + timedelta(days=3):
-                    dr = (venc_data - hoje).days
-                    st.markdown(f"<div style='padding-top:18px'><span class='badge-em-breve'>⚡ {venc_data.strftime('%d/%m/%Y')} (em {dr}d)</span></div>", unsafe_allow_html=True)
-                else:
-                    st.markdown(f"<div style='padding-top:18px'><span class='badge-vence'>📅 {venc_data.strftime('%d/%m/%Y')}</span></div>", unsafe_allow_html=True)
-            with col_r4:
-                if pago_fim:
-                    st.markdown(f"<div style='padding-top:18px;color:#4b5563;font-size:13px;'>{t['divida_encerrada']}</div>", unsafe_allow_html=True)
-                elif eh_fixa:
-                    st.markdown(f"<div style='padding-top:18px'><span class='badge-fixa'>{t['recorrente_inf']}</span></div>", unsafe_allow_html=True)
-                else:
-                    try:
-                        mf = max(0, parc_rest - 1)
-                        du = venc_data.day
-                        mu = (venc_data.month + mf - 1) % 12 + 1
-                        au = venc_data.year + ((venc_data.month + mf - 1) // 12)
-                        try:    dup = date(au, mu, du)
-                        except: dup = date(au, mu, calendar.monthrange(au, mu)[1])
-                        txt_u = dup.strftime('%d/%m/%Y')
-                    except: txt_u = "--/--/----"
-                    falta = max(0.0, v_tot - (parc_pagas * val_exibir))
-                    st.markdown(f"""<div style='padding-top:4px'>
-                        <span class='badge-parcelas'>{parc_rest}x {t['x_restantes']}</span><br>
-                        <span style='color:#6b7280;font-size:11px;display:block;margin-top:2px;'>{t['ultima_parcela']} <strong style='color:#90cdf4;'>{txt_u}</strong></span>
-                        <span style='color:#6b7280;font-size:10px;display:block;'>{t['falta_pagar']} R$ {falta:,.2f}</span>
-                    </div>""", unsafe_allow_html=True)
-            with col_r5:
-                if not pago_fim:
-                    st.markdown('<div class="btn-pagar">', unsafe_allow_html=True)
-                    if st.button(t["btn_pagar"], key=f"btn_p_{id_}"):
-                        if eh_fixa: avancar_parcela_recorrente(id_, row["inicio_pagamento"])
-                        else: avancar_parcela_parcelada_excel(id_, row["inicio_pagamento"], parc_tot, parc_pagas)
-                        st.rerun()
-                    st.markdown('</div>', unsafe_allow_html=True)
-                    st.markdown('<div class="btn-quitar">', unsafe_allow_html=True)
-                    if st.button(t["btn_quitar"], key=f"btn_q_{id_}"):
-                        marcar_pago(id_); st.rerun()
-                    st.markdown('</div>', unsafe_allow_html=True)
-                else:
-                    if st.button(t["btn_excluir"], key=f"btn_del_{id_}"):
-                        excluir_lancamento(id_); st.rerun()
+    for _, row in df.iterrows():
+        id_           = row["id"]
+        desc          = row["descricao"]
+        v_tot         = float(row["valor_total"])
+        parc_tot      = int(row["parcelas_totais"])
+        parc_pagas    = int(row.get("parcelas_pagas", 0))
+        parc_rest     = max(0, parc_tot - parc_pagas)
+        eh_fixa       = int(row["recorrente"]) == 1
+        pago_fim      = bool(row["pago"])
+        val_exibir    = v_tot if eh_fixa else calcular_valor_parcela(v_tot, parc_tot)
+        venc_data     = calcular_proxima_recorrente(to_date(row["inicio_pagamento"])) if eh_fixa else to_date(row["inicio_pagamento"])
 
-        st.markdown(f"<br><br><center style='color:#4b5563;font-size:12px;'>{t['rodape']}</center>", unsafe_allow_html=True)
+        col_r1, col_r2, col_r3, col_r4, col_r5 = st.columns([2.2, 1, 1, 1, 0.8])
+        with col_r1:
+            sub = f"{t['total_label']} R$ {v_tot:,.2f} · {t['inicio_label']} {to_date(row['inicio_pagamento']).strftime('%d/%m/%Y')}" if not eh_fixa else t["conta_mensal_fixa"]
+            st.markdown(f"<div style='padding-top:12px'><strong style='color:#fff;font-size:15px;'>{desc}</strong><br><span style='color:#6b7280;font-size:11px;'>{sub}</span></div>", unsafe_allow_html=True)
+        with col_r2:
+            lbl = t["label_mensal"] if eh_fixa else t["label_parcela"]
+            st.markdown(f"<div style='padding-top:12px'><strong style='font-family:JetBrains Mono;color:#9b8dff;font-size:16px;'>R$ {val_exibir:,.2f}</strong><br><span style='color:#6b7280;font-size:11px;'>{lbl}</span></div>", unsafe_allow_html=True)
+        with col_r3:
+            if pago_fim:
+                st.markdown("<div style='padding-top:18px'><span class='badge-pago'>Concluído ✅</span></div>", unsafe_allow_html=True)
+            elif venc_data == hoje:
+                st.markdown(f"<div style='padding-top:18px'><span class='badge-hoje'>🔥 HOJE ({venc_data.strftime('%d/%m/%Y')})</span></div>", unsafe_allow_html=True)
+            elif venc_data < hoje:
+                st.markdown(f"<div style='padding-top:18px'><span class='badge-urgente'>⚠️ ATRASADO ({venc_data.strftime('%d/%m/%Y')})</span></div>", unsafe_allow_html=True)
+            elif venc_data <= hoje + timedelta(days=3):
+                dr = (venc_data - hoje).days
+                st.markdown(f"<div style='padding-top:18px'><span class='badge-em-breve'>⚡ {venc_data.strftime('%d/%m/%Y')} (em {dr}d)</span></div>", unsafe_allow_html=True)
+            else:
+                st.markdown(f"<div style='padding-top:18px'><span class='badge-vence'>📅 {venc_data.strftime('%d/%m/%Y')}</span></div>", unsafe_allow_html=True)
+        with col_r4:
+            if pago_fim:
+                st.markdown(f"<div style='padding-top:18px;color:#4b5563;font-size:13px;'>{t['divida_encerrada']}</div>", unsafe_allow_html=True)
+            elif eh_fixa:
+                st.markdown(f"<div style='padding-top:18px'><span class='badge-fixa'>{t['recorrente_inf']}</span></div>", unsafe_allow_html=True)
+            else:
+                try:
+                    mf = max(0, parc_rest - 1)
+                    du = venc_data.day
+                    mu = (venc_data.month + mf - 1) % 12 + 1
+                    au = venc_data.year + ((venc_data.month + mf - 1) // 12)
+                    try:    dup = date(au, mu, du)
+                    except: dup = date(au, mu, calendar.monthrange(au, mu)[1])
+                    txt_u = dup.strftime('%d/%m/%Y')
+                except: txt_u = "--/--/----"
+                falta = max(0.0, v_tot - (parc_pagas * val_exibir))
+                st.markdown(f"""<div style='padding-top:4px'>
+                    <span class='badge-parcelas'>{parc_rest}x {t['x_restantes']}</span><br>
+                    <span style='color:#6b7280;font-size:11px;display:block;margin-top:2px;'>{t['ultima_parcela']} <strong style='color:#90cdf4;'>{txt_u}</strong></span>
+                    <span style='color:#6b7280;font-size:10px;display:block;'>{t['falta_pagar']} R$ {falta:,.2f}</span>
+                </div>""", unsafe_allow_html=True)
+        with col_r5:
+            if not pago_fim:
+                st.markdown('<div class="btn-pagar">', unsafe_allow_html=True)
+                if st.button(t["btn_pagar"], key=f"btn_p_{id_}"):
+                    if eh_fixa: avancar_parcela_recorrente(id_, row["inicio_pagamento"])
+                    else: avancar_parcela_parcelada_excel(id_, row["inicio_pagamento"], parc_tot, parc_pagas)
+                    st.rerun()
+                st.markdown('</div>', unsafe_allow_html=True)
+                st.markdown('<div class="btn-quitar">', unsafe_allow_html=True)
+                if st.button(t["btn_quitar"], key=f"btn_q_{id_}"):
+                    marcar_pago(id_); st.rerun()
+                st.markdown('</div>', unsafe_allow_html=True)
+            else:
+                if st.button(t["btn_excluir"], key=f"btn_del_{id_}"):
+                    excluir_lancamento(id_); st.rerun()
+
+    st.markdown(f"<br><br><center style='color:#4b5563;font-size:12px;'>{t['rodape']}</center>", unsafe_allow_html=True)
 
 # ══════════════════════════════
 # ABA 2 — FEEDBACK
 # ══════════════════════════════
 with aba_feedback:
-    t = get_t()
-    st.markdown(t["feedback_titulo"])
-    st.markdown(f"<p style='color:#9ca3af;margin-top:-10px;'>{t['feedback_sub']}</p>", unsafe_allow_html=True)
-    with st.container():
-        st.markdown('<div class="form-section">', unsafe_allow_html=True)
-        mensagem_fb = st.text_area(t["feedback_label"], placeholder=t["feedback_placeholder"], height=160, key="feedback_texto")
-        col_fb, _ = st.columns([1, 3])
-        with col_fb:
-            if st.button(t["feedback_btn"], key="btn_feedback"):
-                if not mensagem_fb.strip():       st.error(t["feedback_vazio"])
-                elif len(mensagem_fb.strip()) < 8: st.error(t["feedback_curto"])
-                else:
-                    if inserir_feedback(uid, mensagem_fb):
-                        st.success(t["feedback_ok"]); st.balloons()
-        st.markdown('</div>', unsafe_allow_html=True)
+t = get_t()
+st.markdown(t["feedback_titulo"])
+st.markdown(f"<p style='color:#9ca3af;margin-top:-10px;'>{t['feedback_sub']}</p>", unsafe_allow_html=True)
+with st.container():
+    st.markdown('<div class="form-section">', unsafe_allow_html=True)
+    mensagem_fb = st.text_area(t["feedback_label"], placeholder=t["feedback_placeholder"], height=160, key="feedback_texto")
+    col_fb, _ = st.columns([1, 3])
+    with col_fb:
+        if st.button(t["feedback_btn"], key="btn_feedback"):
+            if not mensagem_fb.strip():       st.error(t["feedback_vazio"])
+            elif len(mensagem_fb.strip()) < 8: st.error(t["feedback_curto"])
+            else:
+                if inserir_feedback(uid, mensagem_fb):
+                    st.success(t["feedback_ok"]); st.balloons()
+    st.markdown('</div>', unsafe_allow_html=True)
