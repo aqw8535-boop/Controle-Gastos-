@@ -1417,7 +1417,7 @@ if st.session_state.usuario_id is None:
 
         aba_login, aba_cadastro = st.tabs([t.get('aba_entrar', "🔑  Entrar"), t.get('aba_criar_conta', "✨  Criar Conta")])
 
-        with aba_login:
+with aba_login:
             # ── Login Social Premium (HTML/CSS) ──────────────────────────
             import secrets as _sec_oauth
             st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
@@ -1433,7 +1433,6 @@ if st.session_state.usuario_id is None:
             auth_url_apple = apple_get_auth_url(_state_a)
 
             # Injeta os botões com design fino, minimalista e os logos oficiais
-# Injeta os botões com design fino, minimalista e os logos oficiais
             st.markdown(f"""
             <div style="display: flex; gap: 12px; margin-bottom: 5px;">
                 <a href="{auth_url_google}" target="_self" style="flex: 1; text-decoration: none;">
@@ -1505,8 +1504,9 @@ if st.session_state.usuario_id is None:
                     🛒 {t.get('link_vendas', 'Ainda não tem acesso? Conheça o Gastei →')}</a>
             </div>""", unsafe_allow_html=True)
             st.markdown("<br>", unsafe_allow_html=True)
-                with st.expander(t.get('expander_termos', "🛡️ Termos de Uso e Política de Privacidade")):
-                    st.write(t.get('texto_termos', "Seus dados financeiros são armazenados de forma criptografada e privativa. Não compartilhamos suas informações."))
+            
+            with st.expander(t.get('expander_termos', "🛡️ Termos de Uso e Política de Privacidade")):
+                st.write(t.get('texto_termos', "Seus dados financeiros são armazenados de forma criptografada e privativa. Não compartilhamos suas informações."))
 
 # ═════════════════════════════════════════════
 #  APP PRINCIPAL
