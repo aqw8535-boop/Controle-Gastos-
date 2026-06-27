@@ -1418,92 +1418,92 @@ if st.session_state.usuario_id is None:
         aba_login, aba_cadastro = st.tabs([t.get('aba_entrar', "🔑  Entrar"), t.get('aba_criar_conta', "✨  Criar Conta")])
 
 # ── Login Social Premium (HTML/CSS) ──────────────────────────
-                import secrets as _sec_oauth
-                st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+            import secrets as _sec_oauth
+            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
-                # Geramos os states e as URLs antes de renderizar o visual
-                _state_g = _sec_oauth.token_hex(16)
-                _state_a = _sec_oauth.token_hex(16)
-                
-                # Salvamos um deles no session_state para validação no callback
-                st.session_state.oauth_state = _state_g 
-                
-                auth_url_google = google_get_auth_url(_state_g)
-                auth_url_apple = apple_get_auth_url(_state_a)
+            # Geramos os states e as URLs antes de renderizar o visual
+            _state_g = _sec_oauth.token_hex(16)
+            _state_a = _sec_oauth.token_hex(16)
+            
+            # Salvamos um deles no session_state para validação no callback
+            st.session_state.oauth_state = _state_g 
+            
+        auth_url_google = google_get_auth_url(_state_g)
+            auth_url_apple = apple_get_auth_url(_state_a)
 
-                # Injeta os botões com design fino, minimalista e os logos oficiais
-                st.markdown(f"""
-                <div style="display: flex; gap: 12px; margin-bottom: 5px;">
-                    <a href="{auth_url_google}" target="_self" style="flex: 1; text-decoration: none;">
-                        <div style="
-                            display: flex; 
-                            align-items: center; 
-                            justify-content: center; 
-                            gap: 10px; 
-                            background-color: #ffffff; 
-                            border: 1px solid #e5e7eb; 
-                            padding: 12px; 
-                            border-radius: 24px; 
-                            cursor: pointer;
-                            transition: all 0.2s ease;
-                            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-                        " onmouseover="this.style.backgroundColor='#f9fafb'" onmouseout="this.style.backgroundColor='#ffffff'">
-                            <img src="https://fonts.gstatic.com/s/i/productlogos/googleg/v6/web-24dp/logo_googleg_color_24dp.png" width="18px" style="display: block;"/>
-                            <span style="color: #1f2937; font-size: 14px; font-weight: 600; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">Google</span>
-                        </div>
-                    </a>
+            # Injeta os botões com design fino, minimalista e os logos oficiais
+            st.markdown(f"""
+            <div style="display: flex; gap: 12px; margin-bottom: 5px;">
+                <a href="{auth_url_google}" target="_self" style="flex: 1; text-decoration: none;">
+                    <div style="
+                        display: flex; 
+                        align-items: center; 
+                        justify-content: center; 
+                        gap: 10px; 
+                        background-color: #ffffff; 
+                        border: 1px solid #e5e7eb; 
+                        padding: 12px; 
+                        border-radius: 24px; 
+                        cursor: pointer;
+                        transition: all 0.2s ease;
+                        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+                    " onmouseover="this.style.backgroundColor='#f9fafb'" onmouseout="this.style.backgroundColor='#ffffff'">
+                        <img src="https://fonts.gstatic.com/s/i/productlogos/googleg/v6/web-24dp/logo_googleg_color_24dp.png" width="18px" style="display: block;"/>
+                        <span style="color: #1f2937; font-size: 14px; font-weight: 600; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">Google</span>
+                    </div>
+                </a>
 
-                    <a href="{auth_url_apple}" target="_self" style="flex: 1; text-decoration: none;">
-                        <div style="
-                            display: flex; 
-                            align-items: center; 
-                            justify-content: center; 
-                            gap: 10px; 
-                            background-color: #000000; 
-                            padding: 12px; 
-                            border-radius: 24px; 
-                            cursor: pointer;
-                            transition: all 0.2s ease;
-                            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-                        " onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'">
-                            <svg width="15" height="18" viewBox="0 0 170 170" fill="none" xmlns="http://www.w3.org/2000/svg" style="display: block;">
-                                <path d="M150.37 130.25c-2.45 5.66-5.35 10.87-8.71 15.66-4.58 6.53-8.33 11.05-11.22 13.56-4.48 4.12-9.28 6.23-14.42 6.35-3.69 0-8.14-1.05-13.32-3.18-5.19-2.12-9.97-3.17-14.34-3.17-4.58 0-9.49 1.05-14.75 3.17-5.26 2.13-9.5 3.24-12.74 3.35-4.38.13-9.13-1.78-14.25-5.74-3.45-2.65-7.35-7.38-11.71-14.19-7.42-11.18-12.83-23.74-16.23-37.7C5 94.62 3.33 80.43 3.33 65.9c0-15.13 3.73-27.42 11.19-36.87 7.46-9.45 16.73-14.24 27.8-14.37 5.76 0 11.83 1.63 18.21 4.88 6.38 3.26 10.9 4.88 13.56 4.88 2.3 0 6.96-1.75 13.98-5.24 7.02-3.5 13.25-5.12 18.7-4.88 15.82 1.13 27.57 6.94 35.25 17.43-13.56 8.25-20.19 19.31-19.88 33.19.31 10.63 4.25 19.38 11.82 26.25 7.56 6.88 16.44 10.44 26.63 10.69 2.5 5.75 5.06 11.94 7.69 18.56l.02.05zM119.22 3c0 8.12-2.96 15.69-8.88 22.69-5.92 7-13.25 11.44-21.99 12.31-.75-7.88 2.25-15.44 9-22.69 6.75-7.25 14.13-11.44 22.13-12.56.25.75.5 1.5.74 2.25z" fill="#ffffff"/>
-                            </svg>
-                            <span style="color: #ffffff; font-size: 14px; font-weight: 600; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">Apple</span>
-                        </div>
-                    </a>
-                </div>
+                <a href="{auth_url_apple}" target="_self" style="flex: 1; text-decoration: none;">
+                    <div style="
+                        display: flex; 
+                        align-items: center; 
+                        justify-content: center; 
+                        gap: 10px; 
+                        background-color: #000000; 
+                        padding: 12px; 
+                        border-radius: 24px; 
+                        cursor: pointer;
+                        transition: all 0.2s ease;
+                        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+                    " onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'">
+                        <svg width="15" height="18" viewBox="0 0 170 170" fill="none" xmlns="http://www.w3.org/2000/svg" style="display: block;">
+                            <path d="M150.37 130.25c-2.45 5.66-5.35 10.87-8.71 15.66-4.58 6.53-8.33 11.05-11.22 13.56-4.48 4.12-9.28 6.23-14.42 6.35-3.69 0-8.14-1.05-13.32-3.18-5.19-2.12-9.97-3.17-14.34-3.17-4.58 0-9.49 1.05-14.75 3.17-5.26 2.13-9.5 3.24-12.74 3.35-4.38.13-9.13-1.78-14.25-5.74-3.45-2.65-7.35-7.38-11.71-14.19-7.42-11.18-12.83-23.74-16.23-37.7C5 94.62 3.33 80.43 3.33 65.9c0-15.13 3.73-27.42 11.19-36.87 7.46-9.45 16.73-14.24 27.8-14.37 5.76 0 11.83 1.63 18.21 4.88 6.38 3.26 10.9 4.88 13.56 4.88 2.3 0 6.96-1.75 13.98-5.24 7.02-3.5 13.25-5.12 18.7-4.88 15.82 1.13 27.57 6.94 35.25 17.43-13.56 8.25-20.19 19.31-19.88 33.19.31 10.63 4.25 19.38 11.82 26.25 7.56 6.88 16.44 10.44 26.63 10.69 2.5 5.75 5.06 11.94 7.69 18.56l.02.05zM119.22 3c0 8.12-2.96 15.69-8.88 22.69-5.92 7-13.25 11.44-21.99 12.31-.75-7.88 2.25-15.44 9-22.69 6.75-7.25 14.13-11.44 22.13-12.56.25.75.5 1.5.74 2.25z" fill="#ffffff"/>
+                        </svg>
+                        <span style="color: #ffffff; font-size: 14px; font-weight: 600; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">Apple</span>
+                    </div>
+                </a>
+            </div>
 
-                <style>
-                /* Pequeno hack para alinhar perfeitamente no celular */
-                @media (max-width: 480px) {
-                    div[data-testid="stHorizontalBlock"] {
-                        gap: 8px !important;
-                    }
+            <style>
+            /* Pequeno hack para alinhar perfeitamente no celular */
+            @media (max-width: 480px) {
+                div[data-testid="stHorizontalBlock"] {
+                    gap: 8px !important;
                 }
-                </style>
+            }
+            </style>
 
-                <div style="display:flex;align-items:center;gap:10px;margin:18px 0 12px;">
-                  <div style="flex:1;height:1px;background:rgba(255,255,255,0.1);"></div>
-                  <span style="color:#4b5563;font-size:12px;font-weight:600;">ou entre com e-mail</span>
-                  <div style="flex:1;height:1px;background:rgba(255,255,255,0.1);"></div>
-                </div>
-                """, unsafe_allow_html=True)
-                
-                numero_suporte = "5567991158892"
-                msg_wa = t.get('msg_suporte_wa', "Olá! Quero verificar o status do meu acesso no app Gastei.")
-                link_wa = f"https://wa.me/{numero_suporte}?text={msg_wa.replace(' ','%20')}"
-                st.markdown(f"""
-                <div style='text-align:center;margin-top:8px;'>
-                    <a href="{link_wa}" target="_blank" style="color:#9b8dff;font-size:13px;text-decoration:none;opacity:0.8;">
-                        🔒 {t.get('link_suporte', 'Problemas com o acesso? — Falar com o Suporte')}</a>
-                </div>
-                <div style='text-align:center;margin-top:8px;'>
-                    <a href="https://finatechlab.com/pagina-vendas-gastei/" target="_blank"
-                       style="color:#64b5f6;font-size:12px;text-decoration:none;opacity:0.65;">
-                        🛒 {t.get('link_vendas', 'Ainda não tem acesso? Conheça o Gastei →')}</a>
-                </div>""", unsafe_allow_html=True)
-                st.markdown("<br>", unsafe_allow_html=True)
+            <div style="display:flex;align-items:center;gap:10px;margin:18px 0 12px;">
+              <div style="flex:1;height:1px;background:rgba(255,255,255,0.1);"></div>
+              <span style="color:#4b5563;font-size:12px;font-weight:600;">ou entre com e-mail</span>
+              <div style="flex:1;height:1px;background:rgba(255,255,255,0.1);"></div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            numero_suporte = "5567991158892"
+            msg_wa = t.get('msg_suporte_wa', "Olá! Quero verificar o status do meu acesso no app Gastei.")
+            link_wa = f"https://wa.me/{numero_suporte}?text={msg_wa.replace(' ','%20')}"
+            st.markdown(f"""
+            <div style='text-align:center;margin-top:8px;'>
+                <a href="{link_wa}" target="_blank" style="color:#9b8dff;font-size:13px;text-decoration:none;opacity:0.8;">
+                    🔒 {t.get('link_suporte', 'Problemas com o acesso? — Falar com o Suporte')}</a>
+            </div>
+            <div style='text-align:center;margin-top:8px;'>
+                <a href="https://finatechlab.com/pagina-vendas-gastei/" target="_blank"
+                   style="color:#64b5f6;font-size:12px;text-decoration:none;opacity:0.65;">
+                    🛒 {t.get('link_vendas', 'Ainda não tem acesso? Conheça o Gastei →')}</a>
+            </div>""", unsafe_allow_html=True)
+            st.markdown("<br>", unsafe_allow_html=True)
                 with st.expander(t.get('expander_termos', "🛡️ Termos de Uso e Política de Privacidade")):
                     st.write(t.get('texto_termos', "Seus dados financeiros são armazenados de forma criptografada e privativa. Não compartilhamos suas informações."))
 
