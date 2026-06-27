@@ -63,8 +63,7 @@ _SS_DEFAULTS = {
     "reset_email":        "",
     "_salario_carregado": False,
     "oauth_state":        "",    # CSRF token do Google OAuth
-}
-for _k, _v in _SS_DEFAULTS.items():
+}for _k, _v in _SS_DEFAULTS.items():
     if _k not in st.session_state:
         st.session_state[_k] = _v
 
@@ -78,6 +77,41 @@ def mudar_idioma_callback():
             st.session_state.lang = "FR"
         else:
             st.session_state.lang = "PT"
+
+# ── NOVO: CAPTURA DO RETORNO DO GOOGLE OAUTH ────────────────────────────────
+_q_params = st.query_params
+
+if "code" in _q_params:
+    _code = _q_params["code"]
+    
+    with st.spinner("Autenticando com o Google..."):
+        try:
+            # 1. Troca o código temporário do Google pelos dados do usuário
+            dados_usuario = google_exchange_code(_code)
+            
+            if dados_usuario and "email" in dados_usuario:
+                # 2. Cria ou atualiza o usuário no banco de dados do Gastei
+                usuario_id = upsert_usuario_oauth(
+                    email=dados_usuario["email"],
+                    nome=dados_usuario.get("name", "Usuário Google"),
+                    provedor="google"
+                )
+                
+                # 3. Alimenta a sessão para o app saber que está logado de verdade
+                st.session_state.usuario_id = usuario_id
+                st.session_state.usuario_email = dados_usuario["email"]
+                st.session_state.usuario_nome = dados_usuario.get("name", "Usuário Google")
+                
+                # 🚀 O PULO DO GATO: Limpa o "?code=..." da URL para matar o loop infinito
+                st.query_params.clear()
+                
+                # 4. Dá o reboot limpo na tela já logado
+                st.rerun()
+                
+        except Exception as e:
+            st.error(f"Erro ao processar login social: {e}")
+            st.query_params.clear()
+# ─────────────────────────────────────────────────────────────────────────────
 
 # ─────────────────────────────────────────────
 #  MISSÃO 2 — FIXAR IDIOMA: lê/aplica ANTES de renderizar qualquer widget
