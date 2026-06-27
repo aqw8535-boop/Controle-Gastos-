@@ -1478,7 +1478,7 @@ if st.session_state.usuario_id is None:
             <style>
             /* Pequeno hack para alinhar perfeitamente no celular */
             @media (max-width: 480px) {
-                div[data-testid="stHorizontalBlock"] {
+                div[data-testid = "stHorizontalBlock"] {
                     gap: 8px !important;
                 }
             }
