@@ -56,7 +56,7 @@ _SS_DEFAULTS = {
 "oauth_state":        "",    # CSRF token do Google OAuth
 }
 for _k, _v in _SS_DEFAULTS.items():
-if _k not in st.session_state:
+  if _k not in st.session_state:
 st.session_state[_k] = _v
 
 # FUNÇÃO REATIVA DO SELETOR: Roda no exato milésimo de segundo do clique!
