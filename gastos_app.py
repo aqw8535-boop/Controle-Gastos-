@@ -1442,17 +1442,15 @@ if st.session_state.usuario_id is None:
                     )
 
                 with col_a:
-                    if st.button("🍎  Continuar com Apple", key="btn_apple_login", use_container_width=True):
-                        _state = _sec_oauth.token_hex(16)
-                        st.session_state.oauth_state = _state
-                        auth_url = apple_get_auth_url(_state)
-                        st.markdown(f"""
-                        <script>window.location.href = "{auth_url}";</script>
-                        <meta http-equiv="refresh" content="0;url={auth_url}">
-                        """, unsafe_allow_html=True)
-                        st.markdown(f"[👉 Clique aqui se não redirecionar]({auth_url})")
-                        st.stop()
-
+                    # Fazemos exatamente o mesmo fluxo seguro para o botão da Apple
+                    _state_a = _sec_oauth.token_hex(16)
+                    auth_url_apple = apple_get_auth_url(_state_a)
+                    
+                    st.link_button(
+                        "⚫  Continuar com Apple", 
+                        url=auth_url_apple, 
+                        use_container_width=True
+                    )
                 st.markdown("""
                 <div style="display:flex;align-items:center;gap:10px;margin:18px 0 12px;">
                   <div style="flex:1;height:1px;background:rgba(255,255,255,0.1);"></div>
