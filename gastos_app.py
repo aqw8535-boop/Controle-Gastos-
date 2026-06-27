@@ -51,13 +51,13 @@ _SS_DEFAULTS = {
     "reset_step":        0,
     "reset_email":       "",
     "_salario_carregado": False,   # MISSÃO 1: flag para só buscar 1x por sessão
+    # 🔥 COLE AS DUAS LINHAS DO CLAUDE AQUI DENTRO, ANTES DE FECHAR A CHAVE:
+    "oauth_state": "",      # CSRF state do OAuth
+    "trial_info": None,     # Cache local do status de trial
 }
 for _k, _v in _SS_DEFAULTS.items():
     if _k not in st.session_state:
         st.session_state[_k] = _v
-        # Adicione estas chaves ao _SS_DEFAULTS existente:
-"oauth_state":        "",      # CSRF state do OAuth
-"trial_info":         None,    # Cache local do status de trial
 
 # ─────────────────────────────────────────────
 #  SESSION STATE — inicializa ANTES de tudo
