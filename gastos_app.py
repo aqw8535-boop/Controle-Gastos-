@@ -12,6 +12,16 @@ import smtplib
 import secrets as _secrets
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+# ── NOVO: importa módulo de auth e trial ──
+from gastei_auth import (
+    google_get_auth_url, google_exchange_code,
+    apple_get_auth_url,  apple_exchange_code,
+    upsert_usuario_oauth,
+    verificar_acesso_trial,
+    renderizar_tela_bloqueio,
+    rodar_job_emails_trial,
+    TRIAL_DIAS, KIWIFY_URL,
+)
 
 # ─────────────────────────────────────────────
 #  CONFIG DA PÁGINA
@@ -34,6 +44,9 @@ st.markdown("""
 #  SESSION STATE — inicializa ANTES de tudo
 # ─────────────────────────────────────────────
 _SS_DEFAULTS = {
+# Adicione estas chaves ao _SS_DEFAULTS existente:
+    "oauth_state":       "",      # CSRF state do OAuth
+    "trial_info":        None,    # Cache local do status de trial
     "usuario_id":        None,
     "usuario_nome":      None,
     "lang":              "PT",
@@ -764,6 +777,26 @@ def init_db():
         SELECT 1 FROM information_schema.columns WHERE table_name='usuarios' AND column_name='salario'
     ) THEN ALTER TABLE usuarios ADD COLUMN salario NUMERIC(12,2) NOT NULL DEFAULT 0; END IF; END$$""")
 
+# ── Colunas de OAuth e Trial ──
+    for col, defn in [
+        ("provedor",              "TEXT DEFAULT 'email'"),
+        ("provider_id",           "TEXT DEFAULT ''"),
+        ("avatar_url",            "TEXT DEFAULT ''"),
+        ("status_assinatura",     "TEXT NOT NULL DEFAULT 'trial'"),
+        ("trial_inicio",          "TIMESTAMP NOT NULL DEFAULT NOW()"),
+        ("trial_aviso_enviado",   "BOOLEAN NOT NULL DEFAULT FALSE"),
+        ("trial_expirou_email",   "BOOLEAN NOT NULL DEFAULT FALSE"),
+    ]:
+        run_query(f"""DO $$ BEGIN IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name='usuarios' AND column_name='{col}'
+        ) THEN ALTER TABLE usuarios ADD COLUMN {col} {defn}; END IF; END$$""")
+
+    # Índice OAuth
+    run_query("""CREATE UNIQUE INDEX IF NOT EXISTS idx_usuarios_provider
+        ON usuarios(provedor, provider_id)
+        WHERE provider_id IS NOT NULL AND provider_id <> ''""")
+
 @st.cache_resource
 def init_db_once():
     init_db()
@@ -1022,8 +1055,41 @@ def calcular_gasto_mensal(df):
 # ═════════════════════════════════════════════
 #  VALIDAÇÃO TOKEN DE SESSÃO NA URL
 # ═════════════════════════════════════════════
+# ═════════════════════════════════════════════
+#  VALIDAÇÃO TOKEN DE SESSÃO NA URL + OAUTH CALLBACK
+# ═════════════════════════════════════════════
 if st.session_state.usuario_id is None:
-    token_param = st.query_params.get("s", None)
+    params = st.query_params
+
+    # ── Callback Google OAuth ──
+    if "code" in params and "state" in params and params.get("state", "") == st.session_state.get("oauth_state", "X"):
+        code = params["code"]
+        dados = google_exchange_code(code)
+        if dados:
+            resultado = upsert_usuario_oauth(run_query, dados)
+            if resultado:
+                st.session_state.usuario_id   = resultado[0]
+                st.session_state.usuario_nome = resultado[1]
+                st.query_params.clear()
+                st.query_params["s"] = gerar_token_sessao(resultado[0])
+                st.rerun()
+
+    # ── Callback Apple Sign-In ──
+    if "apple_code" in params:
+        code = params["apple_code"]
+        id_token = params.get("apple_id_token", "")
+        dados = apple_exchange_code(code, id_token)
+        if dados:
+            resultado = upsert_usuario_oauth(run_query, dados)
+            if resultado:
+                st.session_state.usuario_id   = resultado[0]
+                st.session_state.usuario_nome = resultado[1]
+                st.query_params.clear()
+                st.query_params["s"] = gerar_token_sessao(resultado[0])
+                st.rerun()
+
+    # ── Token de sessão normal (existente) ──
+    token_param = params.get("s", None)
     if token_param:
         uid_val = validar_token_sessao(token_param)
         if uid_val:
@@ -1032,9 +1098,11 @@ if st.session_state.usuario_id is None:
                 if rows:
                     st.session_state.usuario_id   = rows[0]["id"]
                     st.session_state.usuario_nome = rows[0]["nome"]
-                else: st.query_params.clear()
+                else:
+                    st.query_params.clear()
             except: pass
-        else: st.query_params.clear()
+        else:
+            st.query_params.clear()
 
 # ═════════════════════════════════════════════
 #  TELA DE LOGIN / CADASTRO (INTERNACIONALIZADA)
@@ -1076,6 +1144,45 @@ if st.session_state.usuario_id is None:
         with aba_login:
             if st.session_state.reset_step == 0:
                 st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+# ── Login Social ──────────────────────────
+import secrets as _sec_oauth
+st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+
+col_g, col_a = st.columns(2)
+with col_g:
+    if st.button("🔵  Continuar com Google", key="btn_google_login",
+                 use_container_width=True):
+        _state = _sec_oauth.token_hex(16)
+        st.session_state.oauth_state = _state
+        auth_url = google_get_auth_url(_state)
+        st.markdown(f"""
+        <script>window.location.href = "{auth_url}";</script>
+        <meta http-equiv="refresh" content="0;url={auth_url}">
+        """, unsafe_allow_html=True)
+        st.markdown(f"[👉 Clique aqui se não redirecionar]({auth_url})")
+        st.stop()
+
+with col_a:
+    if st.button("🍎  Continuar com Apple", key="btn_apple_login",
+                 use_container_width=True):
+        _state = _sec_oauth.token_hex(16)
+        st.session_state.oauth_state = _state
+        auth_url = apple_get_auth_url(_state)
+        st.markdown(f"""
+        <script>window.location.href = "{auth_url}";</script>
+        <meta http-equiv="refresh" content="0;url={auth_url}">
+        """, unsafe_allow_html=True)
+        st.markdown(f"[👉 Clique aqui se não redirecionar]({auth_url})")
+        st.stop()
+
+st.markdown("""
+<div style="display:flex;align-items:center;gap:10px;margin:18px 0 12px;">
+  <div style="flex:1;height:1px;background:rgba(255,255,255,0.1);"></div>
+  <span style="color:#4b5563;font-size:12px;font-weight:600;">ou entre com e-mail</span>
+  <div style="flex:1;height:1px;background:rgba(255,255,255,0.1);"></div>
+</div>
+""", unsafe_allow_html=True)
+# ── (campos de e-mail e senha existentes continuam abaixo) ──
                 email_login = st.text_input(t.get('input_email', "E-mail"), key="login_email", placeholder=t.get('holder_email', "seu@email.com"))
                 senha_login = st.text_input(t.get('input_senha', "Senha"), type="password", key="login_senha", placeholder="••••••••")
                 st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
@@ -1199,6 +1306,45 @@ if st.session_state.usuario_id is None:
 # ═════════════════════════════════════════════
 uid = st.session_state.usuario_id
 st.query_params["s"] = gerar_token_sessao(uid)
+
+# ═════════════════════════════════════════════
+#  VERIFICAÇÃO DE TRIAL — roda em toda sessão autenticada
+# ═════════════════════════════════════════════
+uid = st.session_state.usuario_id
+
+# Job de e-mails (1x/dia por instância — cache interno de 24h)
+@st.cache_data(ttl=86400, show_spinner=False)
+def _job_emails_trial_cached(_uid_ignorado):
+    rodar_job_emails_trial(run_query)
+_job_emails_trial_cached(0)
+
+# Verifica acesso do usuário atual
+trial_info = verificar_acesso_trial(uid, run_query)
+st.session_state.trial_info = trial_info
+
+if not trial_info["acesso"]:
+    renderizar_tela_bloqueio(st.session_state.get("usuario_nome", ""))
+    st.stop()   # ← TUDO que vier abaixo só executa se tiver acesso
+
+# Banner de aviso de trial expirando (quando resta ≤ 2 dias)
+if trial_info["status"] == "trial" and trial_info.get("dias_restantes", 999) <= 2:
+    dias_r = trial_info["dias_restantes"]
+    plural = "dia" if dias_r == 1 else "dias"
+    st.markdown(f"""
+    <div style="background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.4);
+                border-radius:10px;padding:10px 18px;margin-bottom:16px;
+                display:flex;align-items:center;justify-content:space-between;gap:12px;">
+      <span style="color:#fde047;font-size:13px;font-weight:700;">
+        ⏰ Seu teste grátis termina em <strong>{dias_r} {plural}</strong>!
+      </span>
+      <a href="{KIWIFY_URL}" target="_blank"
+         style="background:linear-gradient(135deg,#6a3de8,#9b8dff);color:#fff;
+                text-decoration:none;padding:7px 18px;border-radius:8px;
+                font-size:12px;font-weight:700;white-space:nowrap;">
+        🔓 Assinar agora
+      </a>
+    </div>
+    """, unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────
 # MISSÃO 1 — Carrega salário do banco UMA VEZ por sessão logo após o login
