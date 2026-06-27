@@ -13,7 +13,16 @@ import secrets as _secrets
 import requests
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-
+# ── NOVO: importa módulo de auth e trial ──
+from gastei_auth import (
+google_get_auth_url, google_exchange_code,
+apple_get_auth_url,  apple_exchange_code,
+upsert_usuario_oauth,
+verificar_acesso_trial,
+renderizar_tela_bloqueio,
+rodar_job_emails_trial,
+TRIAL_DIAS, KIWIFY_URL,
+)
 # ─────────────────────────────────────────────
 #  CONSTANTES DE TRIAL E OAUTH
 # ─────────────────────────────────────────────
