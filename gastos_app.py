@@ -1395,10 +1395,9 @@ st.markdown("""
   <div style="flex:1;height:1px;background:rgba(255,255,255,0.1);"></div>
 </div>
 """, unsafe_allow_html=True)
-
-        email_login = st.text_input(t.get('input_email', "E-mail"), key="login_email", placeholder=t.get('holder_email', "seu@email.com"))
-        senha_login = st.text_input(t.get('input_senha', "Senha"), type="password", key="login_senha", placeholder="••••••••")
-        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+email_login = st.text_input(t.get('input_email', "E-mail"), key="login_email", placeholder=t.get('holder_email', "seu@email.com"))
+senha_login = st.text_input(t.get('input_senha', "Senha"), type="password", key="login_senha", placeholder="••••••••")
+st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
             
             if st.button(t.get('btn_entrar_seta', "Entrar →"), key="btn_login"):
                 if not email_login or not senha_login:
