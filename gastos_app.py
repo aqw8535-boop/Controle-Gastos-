@@ -1087,7 +1087,7 @@ if "apple_code" in params:
 
     # ── Token de sessão normal (existente) ──
 token_param = params.get("s", None)
-    if token_param:
+if token_param:
         uid_val = validar_token_sessao(token_param)
         if uid_val:
             try:
