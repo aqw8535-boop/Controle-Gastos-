@@ -26,7 +26,7 @@ from gastei_auth import (
 # ─────────────────────────────────────────────
 #  CONFIG DA PÁGINA
 # ─────────────────────────────────────────────
-st.set_page_config(page_title=\"Gastei\", page_icon=\"💳\", layout=\"wide\")
+st.set_page_config(page_title="Gastei", page_icon="💳", layout="wide")
 
 
 # ── BLINDAGEM ANTI-LOOP INFINITO OAUTH ──────────────────────────────────────
