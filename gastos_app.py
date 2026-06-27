@@ -1427,16 +1427,19 @@ if st.session_state.usuario_id is None:
 
                 col_g, col_a = st.columns(2)
                 with col_g:
-                    if st.button("🔵  Continuar com Google", key="btn_google_login", use_container_width=True):
-                        _state = _sec_oauth.token_hex(16)
-                        st.session_state.oauth_state = _state
-                        auth_url = google_get_auth_url(_state)
-                        st.markdown(f"""
-                        <script>window.location.href = "{auth_url}";</script>
-                        <meta http-equiv="refresh" content="0;url={auth_url}">
-                        """, unsafe_allow_html=True)
-                        st.markdown(f"[👉 Clique aqui se não redirecionar]({auth_url})")
-                        st.stop()
+                    # 1. Geramos o state de segurança e salvamos na sessão
+                    _state = _sec_oauth.token_hex(16)
+                    st.session_state.oauth_state = _state
+                    
+                    # 2. Geramos a URL oficial com base no Client ID e Redirect URI do seu secrets
+                    auth_url_google = google_get_auth_url(_state)
+                    
+                    # 3. Usamos o link_button que abre nativamente o fluxo do Google sem disparar o bloqueio 403 do navegador
+                    st.link_button(
+                        "🔵  Continuar com Google", 
+                        url=auth_url_google, 
+                        use_container_width=True
+                    )
 
                 with col_a:
                     if st.button("🍎  Continuar com Apple", key="btn_apple_login", use_container_width=True):
