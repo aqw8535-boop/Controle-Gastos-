@@ -1332,10 +1332,40 @@ def calcular_gasto_mensal(df):
     return float(rec + (par["valor_total"] / par["parcelas_totais"].replace(0, 1)).sum())
 
 # ═════════════════════════════════════════════
-#  VALIDAÇÃO TOKEN DE SESSÃO NA URL
+#  VALIDAÇÃO TOKEN DE SESSÃO NA URL + OAUTH CALLBACK
 # ═════════════════════════════════════════════
 if st.session_state.usuario_id is None:
-    token_param = st.query_params.get("s", None)
+    params = st.query_params
+
+    # ── Callback Google OAuth ──
+    if "code" in params and "state" in params and params.get("state", "") == st.session_state.get("oauth_state", "X"):
+        code = params["code"]
+        dados = google_exchange_code(code)
+        if dados:
+            resultado = upsert_usuario_oauth(run_query, dados)
+            if resultado:
+                st.session_state.usuario_id   = resultado[0]
+                st.session_state.usuario_nome = resultado[1]
+                st.query_params.clear()
+                st.query_params["s"] = gerar_token_sessao(resultado[0])
+                st.rerun()
+
+    # ── Callback Apple Sign-In ──
+    if "apple_code" in params:
+        code = params["apple_code"]
+        id_token = params.get("apple_id_token", "")
+        dados = apple_exchange_code(code, id_token)
+        if dados:
+            resultado = upsert_usuario_oauth(run_query, dados)
+            if resultado:
+                st.session_state.usuario_id   = resultado[0]
+                st.session_state.usuario_nome = resultado[1]
+                st.query_params.clear()
+                st.query_params["s"] = gerar_token_sessao(resultado[0])
+                st.rerun()
+
+    # ── Token de sessão normal (existente) ──
+    token_param = params.get("s", None)
     if token_param:
         uid_val = validar_token_sessao(token_param)
         if uid_val:
@@ -1344,9 +1374,11 @@ if st.session_state.usuario_id is None:
                 if rows:
                     st.session_state.usuario_id   = rows[0]["id"]
                     st.session_state.usuario_nome = rows[0]["nome"]
-                else: st.query_params.clear()
+                else:
+                    st.query_params.clear()
             except: pass
-        else: st.query_params.clear()
+        else:
+            st.query_params.clear()
 
 # ═════════════════════════════════════════════
 #  TELA DE LOGIN / CADASTRO (INTERNACIONALIZADA)
