@@ -1420,6 +1420,47 @@ if st.session_state.usuario_id is None:
         with aba_login:
             if st.session_state.reset_step == 0:
                 st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+                #Testando Atualizacao
+                # ── Login Social ──────────────────────────
+import secrets as _sec_oauth
+st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+
+col_g, col_a = st.columns(2)
+with col_g:
+    if st.button("🔵  Continuar com Google", key="btn_google_login",
+                 use_container_width=True):
+        _state = _sec_oauth.token_hex(16)
+        st.session_state.oauth_state = _state
+        auth_url = google_get_auth_url(_state)
+        st.markdown(f"""
+        <script>window.location.href = "{auth_url}";</script>
+        <meta http-equiv="refresh" content="0;url={auth_url}">
+        """, unsafe_allow_html=True)
+        st.markdown(f"[👉 Clique aqui se não redirecionar]({auth_url})")
+        st.stop()
+
+with col_a:
+    if st.button("🍎  Continuar com Apple", key="btn_apple_login",
+                 use_container_width=True):
+        _state = _sec_oauth.token_hex(16)
+        st.session_state.oauth_state = _state
+        auth_url = apple_get_auth_url(_state)
+        st.markdown(f"""
+        <script>window.location.href = "{auth_url}";</script>
+        <meta http-equiv="refresh" content="0;url={auth_url}">
+        """, unsafe_allow_html=True)
+        st.markdown(f"[👉 Clique aqui se não redirecionar]({auth_url})")
+        st.stop()
+
+st.markdown("""
+<div style="display:flex;align-items:center;gap:10px;margin:18px 0 12px;">
+  <div style="flex:1;height:1px;background:rgba(255,255,255,0.1);"></div>
+  <span style="color:#4b5563;font-size:12px;font-weight:600;">ou entre com e-mail</span>
+  <div style="flex:1;height:1px;background:rgba(255,255,255,0.1);"></div>
+</div>
+""", unsafe_allow_html=True)
+# ── (campos de e-mail e senha existentes continuam abaixo) ──
+#Testando Atualicacao Final 
                 email_login = st.text_input(t.get('input_email', "E-mail"), key="login_email", placeholder=t.get('holder_email', "seu@email.com"))
                 senha_login = st.text_input(t.get('input_senha', "Senha"), type="password", key="login_senha", placeholder="••••••••")
                 st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
