@@ -10,8 +10,19 @@ import re
 import calendar
 import smtplib
 import secrets as _secrets
+import requests
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+
+# ─────────────────────────────────────────────
+#  CONSTANTES DE TRIAL E OAUTH
+# ─────────────────────────────────────────────
+TRIAL_DIAS       = 7
+KIWIFY_URL       = "https://pay.kiwify.com.br/CtPYesz"
+WA_SUPORTE       = "5567991158892"
+GOOGLE_AUTH_URL  = "https://accounts.google.com/o/oauth2/v2/auth"
+GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
+GOOGLE_INFO_URL  = "https://www.googleapis.com/oauth2/v3/userinfo"
 
 # ─────────────────────────────────────────────
 #  CONFIG DA PÁGINA
@@ -34,31 +45,15 @@ st.markdown("""
 #  SESSION STATE — inicializa ANTES de tudo
 # ─────────────────────────────────────────────
 _SS_DEFAULTS = {
-    "usuario_id":        None,
-    "usuario_nome":      None,
-    "lang":              "PT",
-    "salario":           0.0,
-    "pref_aberto":       False,
-    "reset_step":        0,
-    "reset_email":       "",
-    "_salario_carregado": False,   # MISSÃO 1: flag para só buscar 1x por sessão
-}
-for _k, _v in _SS_DEFAULTS.items():
-    if _k not in st.session_state:
-        st.session_state[_k] = _v
-
-# ─────────────────────────────────────────────
-#  SESSION STATE — inicializa ANTES de tudo
-# ─────────────────────────────────────────────
-_SS_DEFAULTS = {
-    "usuario_id":        None,
-    "usuario_nome":      None,
-    "lang":              "PT",
-    "salario":           0.0,
-    "pref_aberto":       False,
-    "reset_step":        0,
-    "reset_email":       "",
+    "usuario_id":         None,
+    "usuario_nome":       None,
+    "lang":               "PT",
+    "salario":            0.0,
+    "pref_aberto":        False,
+    "reset_step":         0,
+    "reset_email":        "",
     "_salario_carregado": False,
+    "oauth_state":        "",    # CSRF token do Google OAuth
 }
 for _k, _v in _SS_DEFAULTS.items():
     if _k not in st.session_state:
@@ -763,6 +758,20 @@ def init_db():
     run_query("""DO $$ BEGIN IF NOT EXISTS (
         SELECT 1 FROM information_schema.columns WHERE table_name='usuarios' AND column_name='salario'
     ) THEN ALTER TABLE usuarios ADD COLUMN salario NUMERIC(12,2) NOT NULL DEFAULT 0; END IF; END$$""")
+    # ── Colunas de Trial e Google OAuth ──
+    for _col, _def in [
+        ("provedor",            "TEXT NOT NULL DEFAULT 'email'"),
+        ("provider_id",         "TEXT NOT NULL DEFAULT ''"),
+        ("avatar_url",          "TEXT NOT NULL DEFAULT ''"),
+        ("status_assinatura",   "TEXT NOT NULL DEFAULT 'trial'"),
+        ("trial_inicio",        "TIMESTAMP NOT NULL DEFAULT NOW()"),
+        ("aviso_d1_enviado",    "BOOLEAN NOT NULL DEFAULT FALSE"),
+        ("aviso_d0_enviado",    "BOOLEAN NOT NULL DEFAULT FALSE"),
+    ]:
+        run_query(f"""DO $$ BEGIN IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name='usuarios' AND column_name='{_col}'
+        ) THEN ALTER TABLE usuarios ADD COLUMN {_col} {_def}; END IF; END$$""")
 
 @st.cache_resource
 def init_db_once():
@@ -923,11 +932,284 @@ def salvar_salario_db(uid: int, valor: float) -> bool:
     """Persiste o salário no Supabase. Chamado SOMENTE ao clicar no botão."""
     try:
         run_query("UPDATE usuarios SET salario=%s WHERE id=%s", (float(valor), uid))
-        buscar_salario_db.clear()          # invalida cache para refletir novo valor
-        st.session_state.salario = valor   # atualiza estado local imediatamente
+        buscar_salario_db.clear()
+        st.session_state.salario = valor
         return True
     except Exception as e:
         st.error(f"❌ Erro ao salvar salário: {e}"); return False
+
+# ─────────────────────────────────────────────
+#  GOOGLE OAUTH
+# ─────────────────────────────────────────────
+def google_auth_url(state: str) -> str:
+    try:
+        cfg = st.secrets["google_oauth"]
+        from urllib.parse import urlencode
+        p = {
+            "client_id":     cfg["client_id"],
+            "redirect_uri":  cfg["redirect_uri"],
+            "response_type": "code",
+            "scope":         "openid email profile",
+            "access_type":   "offline",
+            "state":         state,
+            "prompt":        "select_account",
+        }
+        return f"{GOOGLE_AUTH_URL}?{urlencode(p)}"
+    except Exception:
+        return ""
+
+def google_trocar_code(code: str) -> dict | None:
+    """Troca o authorization code pelos dados do usuário Google."""
+    try:
+        cfg = st.secrets["google_oauth"]
+        tok = requests.post(GOOGLE_TOKEN_URL, data={
+            "code":          code,
+            "client_id":     cfg["client_id"],
+            "client_secret": cfg["client_secret"],
+            "redirect_uri":  cfg["redirect_uri"],
+            "grant_type":    "authorization_code",
+        }, timeout=10)
+        tok.raise_for_status()
+        info = requests.get(GOOGLE_INFO_URL, headers={
+            "Authorization": f"Bearer {tok.json()['access_token']}"
+        }, timeout=10)
+        info.raise_for_status()
+        u = info.json()
+        return {
+            "provider_id": u.get("sub", ""),
+            "email":       u.get("email", "").lower().strip(),
+            "nome":        u.get("name") or u.get("given_name") or "Usuário Google",
+            "avatar_url":  u.get("picture", ""),
+        }
+    except Exception as e:
+        st.error(f"❌ Erro Google OAuth: {e}"); return None
+
+def upsert_usuario_google(dados: dict) -> tuple[int, str] | None:
+    """
+    Cria ou localiza o usuário Google no banco.
+    Ordem: provider_id → e-mail → cria novo em trial.
+    """
+    email = dados["email"]; pid = dados["provider_id"]
+    nome  = dados["nome"];  av  = dados["avatar_url"]
+    try:
+        # 1. busca pelo ID Google
+        rows = run_query("SELECT id,nome FROM usuarios WHERE provedor='google' AND provider_id=%s",
+                         (pid,), fetch=True)
+        if rows: return rows[0]["id"], rows[0]["nome"]
+
+        # 2. busca por e-mail (conta manual prévia) → vincula OAuth
+        rows = run_query("SELECT id,nome FROM usuarios WHERE email=%s", (email,), fetch=True)
+        if rows:
+            run_query("UPDATE usuarios SET provedor='google', provider_id=%s, avatar_url=%s WHERE id=%s",
+                      (pid, av, rows[0]["id"]))
+            return rows[0]["id"], rows[0]["nome"]
+
+        # 3. cria conta nova em trial
+        run_query("""INSERT INTO usuarios
+            (nome,email,senha,telefone,provedor,provider_id,avatar_url,
+             status_assinatura,trial_inicio,salario)
+            VALUES (%s,%s,'','','google',%s,%s,'trial',NOW(),0)""",
+            (nome, email, pid, av))
+        rows = run_query("SELECT id FROM usuarios WHERE email=%s", (email,), fetch=True)
+        if rows:
+            # registra na licencas_ativas para compatibilidade
+            _expira = date.today() + timedelta(days=TRIAL_DIAS)
+            try:
+                run_query("""INSERT INTO licencas_ativas (email,tipo_licenca,expira_em)
+                    VALUES (%s,'trial',%s) ON CONFLICT (email) DO NOTHING""",
+                    (email, _expira))
+            except Exception: pass
+            return rows[0]["id"], nome
+    except Exception as e:
+        st.error(f"❌ Erro ao registrar usuário Google: {e}")
+    return None
+
+# ─────────────────────────────────────────────
+#  MOTOR DE TRIAL
+# ─────────────────────────────────────────────
+@st.cache_data(ttl=60, show_spinner=False)
+def verificar_trial(usuario_id: int) -> dict:
+    """
+    Retorna dict com: acesso (bool), status (str), dias_restantes (int).
+    Cache de 60s para não bater no banco a cada clique.
+    """
+    try:
+        rows = run_query(
+            "SELECT status_assinatura, trial_inicio FROM usuarios WHERE id=%s",
+            (usuario_id,), fetch=True)
+        if not rows:
+            return {"acesso": False, "status": "erro", "dias_restantes": 0}
+        u      = rows[0]
+        status = u["status_assinatura"]
+        if status in ("pago", "vitalicio", "assinatura_valida"):
+            return {"acesso": True, "status": status, "dias_restantes": 999}
+        if status == "trial":
+            inicio = u["trial_inicio"]
+            if hasattr(inicio, "date"): inicio = inicio.date()
+            expira    = inicio + timedelta(days=TRIAL_DIAS)
+            restantes = (expira - date.today()).days
+            if restantes > 0:
+                return {"acesso": True,  "status": "trial",    "dias_restantes": restantes}
+            else:
+                return {"acesso": False, "status": "expirado", "dias_restantes": 0}
+    except Exception:
+        pass
+    return {"acesso": False, "status": "erro", "dias_restantes": 0}
+
+def _job_emails_trial():
+    """
+    Envia e-mails de aviso (D-1) e bloqueio (D+0) para trials expirando.
+    É chamado com cache de 24h para rodar só uma vez por dia por instância.
+    """
+    hoje = date.today()
+    try:
+        cfg = st.secrets.get("email", {})
+        if not cfg: return
+
+        # D-1: aviso
+        amanha = hoje + timedelta(days=1)
+        rows = run_query(f"""
+            SELECT id,nome,email FROM usuarios
+            WHERE status_assinatura='trial' AND aviso_d1_enviado=FALSE
+              AND (trial_inicio::date + interval '{TRIAL_DIAS-1} days')::date = '{amanha}'
+        """, fetch=True)
+        for u in (rows or []):
+            html = f"""<div style="font-family:sans-serif;max-width:500px;margin:auto;
+                background:#1a1a2e;border-radius:16px;padding:36px;color:#e8e4ff;">
+              <div style="text-align:center;font-size:48px;">⏰</div>
+              <h2 style="text-align:center;color:#fbbf24;">Seu teste termina amanhã!</h2>
+              <p style="color:#9ca3af;text-align:center;">
+                Olá, <strong style="color:#fff;">{u['nome']}</strong>!
+                Não perca o controle das suas finanças.
+              </p>
+              <a href="{KIWIFY_URL}" style="display:block;background:linear-gradient(135deg,#6a3de8,#9b8dff);
+                 color:#fff;text-align:center;padding:16px;border-radius:12px;
+                 font-weight:700;font-size:15px;text-decoration:none;margin-top:24px;">
+                🔓 Assinar Gastei Premium — R$ 24,90/mês
+              </a></div>"""
+            _smtp_send(cfg, u["email"], "⏰ Seu teste grátis termina amanhã — Gastei", html)
+            run_query("UPDATE usuarios SET aviso_d1_enviado=TRUE WHERE id=%s", (u["id"],))
+
+        # D+0: expirado
+        rows = run_query(f"""
+            SELECT id,nome,email FROM usuarios
+            WHERE status_assinatura='trial' AND aviso_d0_enviado=FALSE
+              AND (trial_inicio::date + interval '{TRIAL_DIAS} days')::date <= '{hoje}'
+        """, fetch=True)
+        for u in (rows or []):
+            html = f"""<div style="font-family:sans-serif;max-width:500px;margin:auto;
+                background:#1a1a2e;border-radius:16px;padding:36px;color:#e8e4ff;">
+              <div style="text-align:center;font-size:48px;">🔒</div>
+              <h2 style="text-align:center;color:#ef4444;">Acesso suspenso</h2>
+              <p style="color:#9ca3af;text-align:center;">
+                Olá, <strong style="color:#fff;">{u['nome']}</strong>!
+                Seus {TRIAL_DIAS} dias gratuitos chegaram ao fim.
+                Seus dados estão salvos esperando por você.
+              </p>
+              <a href="{KIWIFY_URL}" style="display:block;background:linear-gradient(135deg,#6a3de8,#9b8dff);
+                 color:#fff;text-align:center;padding:16px;border-radius:12px;
+                 font-weight:700;font-size:15px;text-decoration:none;margin-top:24px;">
+                🚀 Reativar acesso — R$ 24,90/mês
+              </a></div>"""
+            _smtp_send(cfg, u["email"], "🔒 Seu acesso ao Gastei foi suspenso", html)
+            run_query("UPDATE usuarios SET aviso_d0_enviado=TRUE WHERE id=%s", (u["id"],))
+    except Exception:
+        pass   # job silencioso — nunca quebra a UI
+
+def _smtp_send(cfg: dict, dest: str, assunto: str, html: str):
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = assunto
+        msg["From"]    = cfg["remetente"]
+        msg["To"]      = dest
+        msg.attach(MIMEText(html, "html"))
+        porta = int(cfg.get("smtp_port", 587))
+        if porta == 465:
+            import ssl; ctx = ssl.create_default_context()
+            with smtplib.SMTP_SSL(cfg["smtp_host"], porta, context=ctx) as s:
+                s.login(cfg["remetente"], cfg["senha_smtp"])
+                s.sendmail(cfg["remetente"], dest, msg.as_string())
+        else:
+            with smtplib.SMTP(cfg["smtp_host"], porta, timeout=10) as s:
+                s.ehlo(); s.starttls(); s.ehlo()
+                s.login(cfg["remetente"], cfg["senha_smtp"])
+                s.sendmail(cfg["remetente"], dest, msg.as_string())
+    except Exception: pass
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def _job_diario(_dummy: int):
+    """Wrapper cacheado para rodar _job_emails_trial apenas 1x por dia."""
+    _job_emails_trial()
+
+# ─────────────────────────────────────────────
+#  TELA DE BLOQUEIO (trial expirado)
+# ─────────────────────────────────────────────
+def renderizar_tela_bloqueio(nome: str = ""):
+    link_wa = f"https://wa.me/{WA_SUPORTE}?text=Quero%20assinar%20o%20Gastei%20Premium"
+    nome_d  = f", {nome}" if nome else ""
+    st.markdown("""
+    <style>
+    .blq {
+        max-width:560px;margin:60px auto 0;
+        background:rgba(255,255,255,0.03);
+        border:1px solid rgba(239,68,68,0.25);
+        border-radius:24px;padding:48px 40px;
+        box-shadow:0 8px 60px rgba(239,68,68,0.12);
+        backdrop-filter:blur(14px);text-align:center;
+        animation:blqIn .4s ease;
+    }
+    @keyframes blqIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+    .blq-titulo{font-size:28px;font-weight:800;
+        background:linear-gradient(90deg,#ef4444,#fca5a5);
+        -webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:10px;}
+    .blq-sub{color:#9ca3af;font-size:15px;margin-bottom:28px;line-height:1.65;}
+    .blq-badge{display:inline-block;background:rgba(106,61,232,0.16);
+        border:1px solid rgba(155,141,255,0.4);border-radius:999px;
+        padding:7px 22px;color:#c4b5fd;font-size:13px;font-weight:700;margin-bottom:24px;}
+    .blq-features{text-align:left;margin:0 auto 24px;max-width:320px;
+        color:#9ca3af;font-size:14px;list-style:none;padding:0;}
+    .blq-features li{padding:5px 0;}
+    .blq-features li::before{content:"✅ ";}
+    .blq-btn{display:block;background:linear-gradient(135deg,#6a3de8,#9b8dff);
+        color:#fff!important;text-decoration:none!important;
+        border-radius:14px;padding:18px 32px;font-size:17px;font-weight:700;
+        letter-spacing:.5px;box-shadow:0 4px 24px rgba(106,61,232,.45);
+        transition:transform .2s,box-shadow .2s;margin-bottom:14px;}
+    .blq-btn:hover{transform:translateY(-2px);box-shadow:0 8px 36px rgba(106,61,232,.6);}
+    .blq-wa{display:inline-flex;align-items:center;gap:8px;
+        color:#34d399!important;text-decoration:none!important;
+        font-size:14px;font-weight:600;opacity:.85;}
+    .blq-wa:hover{opacity:1;}
+    </style>""", unsafe_allow_html=True)
+    st.markdown(f"""
+    <div class="blq">
+      <div style="font-size:64px;margin-bottom:8px;">🔒</div>
+      <div class="blq-titulo">Seu teste gratuito acabou</div>
+      <p class="blq-sub">
+        Olá{nome_d}! Seus <strong style="color:#fff;">{TRIAL_DIAS} dias grátis</strong>
+        chegaram ao fim.<br>Seus dados estão salvos e esperando por você.
+      </p>
+      <div class="blq-badge">💳 Apenas R$ 24,90/mês · Cancele quando quiser</div>
+      <ul class="blq-features">
+        <li>Lançamentos e parcelas ilimitados</li>
+        <li>Controle de contas fixas e variáveis</li>
+        <li>Alertas de vencimento em tempo real</li>
+        <li>Análise de % do salário comprometido</li>
+        <li>Suporte prioritário via WhatsApp</li>
+      </ul>
+      <a href="{KIWIFY_URL}" target="_blank" class="blq-btn">
+        🚀 Assinar Gastei Premium — R$ 24,90/mês
+      </a><br>
+      <a href="{link_wa}" target="_blank" class="blq-wa">
+        💬 Falar com o suporte no WhatsApp
+      </a>
+    </div>""", unsafe_allow_html=True)
+    st.markdown("<br>", unsafe_allow_html=True)
+    _, _cm, _ = st.columns([2, 1, 2])
+    with _cm:
+        if st.button("← Usar outra conta", key="btn_logout_blq"):
+            for k in list(st.session_state.keys()): del st.session_state[k]
+            st.query_params.clear(); st.rerun()
 
 # ─────────────────────────────────────────────
 #  LANÇAMENTOS
