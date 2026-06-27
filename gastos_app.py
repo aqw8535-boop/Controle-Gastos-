@@ -10,34 +10,60 @@ import re
 import calendar
 import smtplib
 import secrets as _secrets
-import requests
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 # ── NOVO: importa módulo de auth e trial ──
 from gastei_auth import (
-google_get_auth_url, google_exchange_code,
-apple_get_auth_url,  apple_exchange_code,
-upsert_usuario_oauth,
-verificar_acesso_trial,
-renderizar_tela_bloqueio,
-rodar_job_emails_trial,
-TRIAL_DIAS, KIWIFY_URL,
+    google_get_auth_url, google_exchange_code,
+    apple_get_auth_url,  apple_exchange_code,
+    upsert_usuario_oauth,
+    verificar_acesso_trial,
+    renderizar_tela_bloqueio,
+    rodar_job_emails_trial,
+    TRIAL_DIAS, KIWIFY_URL,
 )
-# ─────────────────────────────────────────────
-#  CONSTANTES DE TRIAL E OAUTH
-# ─────────────────────────────────────────────
-TRIAL_DIAS       = 7
-KIWIFY_URL       = "https://pay.kiwify.com.br/CtPYesz"
-WA_SUPORTE       = "5567991158892"
-GOOGLE_AUTH_URL  = "https://accounts.google.com/o/oauth2/v2/auth"
-GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
-GOOGLE_INFO_URL  = "https://www.googleapis.com/oauth2/v3/userinfo"
 
 # ─────────────────────────────────────────────
 #  CONFIG DA PÁGINA
 # ─────────────────────────────────────────────
-st.set_page_config(page_title="Gastei", page_icon="💳", layout="wide")
+st.set_page_config(page_title=\"Gastei\", page_icon=\"💳\", layout=\"wide\")
 
+
+# ── BLINDAGEM ANTI-LOOP INFINITO OAUTH ──────────────────────────────────────
+# Intercepta os parâmetros na primeiríssima linha antes de qualquer renderização
+_q_params = st.query_params
+
+if "code" in _q_params:
+    _code = _q_params["code"]
+    
+    # 1. Executa a troca imediatamente limpando a UI para o usuário saber que está logando
+    with st.spinner("Conectando sua conta Google..."):
+        try:
+            dados_usuario = google_exchange_code(_code)
+            
+            if dados_usuario and "email" in dados_usuario:
+                # 2. Registra ou busca o cara no banco
+                usuario_id = upsert_usuario_oauth(
+                    email=dados_usuario["email"],
+                    nome=dados_usuario.get("name", "Usuário Google"),
+                    provedor="google"
+                )
+                
+                # 3. Salva no session_state global
+                st.session_state.usuario_id = usuario_id
+                st.session_state.usuario_email = dados_usuario["email"]
+                st.session_state.usuario_nome = dados_usuario.get("name", "Usuário Google")
+                
+                # 🚀 SINAL VERMELHO PRO LOOP: Deleta de vez os parâmetros da URL
+                st.query_params.clear()
+                
+                # 4. Força o recarregamento definitivo já autenticado
+                st.rerun()
+        except Exception as e:
+            st.error(f"Erro na autenticação social: {e}")
+            st.query_params.clear()
+            st.stop()
+            
 # ─────────────────────────────────────────────
 #  PWA — META TAGS
 # ─────────────────────────────────────────────
