@@ -1059,7 +1059,7 @@ if st.session_state.usuario_id is None:
     params = st.query_params
 
     # ── Callback Google OAuth ──
-    if "code" in params and "state" in params and params.get("state", "") == st.session_state.get("oauth_state", "X"):
+if "code" in params and "state" in params and params.get("state", "") == st.session_state.get("oauth_state", "X"):
         code = params["code"]
         dados = google_exchange_code(code)
         if dados:
@@ -1072,7 +1072,7 @@ if st.session_state.usuario_id is None:
                 st.rerun()
 
     # ── Callback Apple Sign-In ──
-    if "apple_code" in params:
+if "apple_code" in params:
         code = params["apple_code"]
         id_token = params.get("apple_id_token", "")
         dados = apple_exchange_code(code, id_token)
