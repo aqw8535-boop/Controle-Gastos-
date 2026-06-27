@@ -1417,7 +1417,8 @@ if st.session_state.usuario_id is None:
 
         aba_login, aba_cadastro = st.tabs([t.get('aba_entrar', "🔑  Entrar"), t.get('aba_criar_conta', "✨  Criar Conta")])
 
-# ── Login Social Premium (HTML/CSS) ──────────────────────────
+        with aba_login:
+            # ── Login Social Premium (HTML/CSS) ──────────────────────────
             import secrets as _sec_oauth
             st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
@@ -1428,7 +1429,7 @@ if st.session_state.usuario_id is None:
             # Salvamos um deles no session_state para validação no callback
             st.session_state.oauth_state = _state_g 
             
-        auth_url_google = google_get_auth_url(_state_g)
+            auth_url_google = google_get_auth_url(_state_g)
             auth_url_apple = apple_get_auth_url(_state_a)
 
             # Injeta os botões com design fino, minimalista e os logos oficiais
