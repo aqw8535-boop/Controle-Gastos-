@@ -1433,6 +1433,7 @@ if st.session_state.usuario_id is None:
             auth_url_apple = apple_get_auth_url(_state_a)
 
             # Injeta os botões com design fino, minimalista e os logos oficiais
+# Injeta os botões com design fino, minimalista e os logos oficiais
             st.markdown(f"""
             <div style="display: flex; gap: 12px; margin-bottom: 5px;">
                 <a href="{auth_url_google}" target="_self" style="flex: 1; text-decoration: none;">
@@ -1476,18 +1477,17 @@ if st.session_state.usuario_id is None:
             </div>
 
             <style>
-            /* Pequeno hack para alinhar perfeitamente no celular */
-            @media (max-width: 480px) {
-                div[data-testid = "stHorizontalBlock"] {
+            @media (max-width: 480px) {{
+                div[data-testid="stHorizontalBlock"] {{
                     gap: 8px !important;
-                }
-            }
+                }}
+            }}
             </style>
 
             <div style="display:flex;align-items:center;gap:10px;margin:18px 0 12px;">
-              <div style="flex:1;height:1px;background:rgba(255,255,255,0.1);"></div>
-              <span style="color:#4b5563;font-size:12px;font-weight:600;">ou entre com e-mail</span>
-              <div style="flex:1;height:1px;background:rgba(255,255,255,0.1);"></div>
+                <div style="flex:1;height:1px;background:rgba(255,255,255,0.1);"></div>
+                <span style="color:#4b5563;font-size:12px;font-weight:600;">ou entre com e-mail</span>
+                <div style="flex:1;height:1px;background:rgba(255,255,255,0.1);"></div>
             </div>
             """, unsafe_allow_html=True)
             
