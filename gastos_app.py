@@ -780,7 +780,28 @@ def init_db():
         run_query(f"""DO $$ BEGIN IF NOT EXISTS (
             SELECT 1 FROM information_schema.columns
             WHERE table_name='usuarios' AND column_name='{_col}'
-        ) THEN ALTER TABLE usuarios ADD COLUMN {_col} {_def}; END IF; END$$""")
+        ) THEN ALTER TABLE usuarios ADD COLUMN {_col} {_def}; END IF; END$$"""
+                 # Cole ao final de init_db(), antes do @st.cache_resource:
+
+    # ── Colunas de OAuth e Trial ──
+    for col, defn in [
+        ("provedor",              "TEXT DEFAULT 'email'"),
+        ("provider_id",           "TEXT DEFAULT ''"),
+        ("avatar_url",            "TEXT DEFAULT ''"),
+        ("status_assinatura",     "TEXT NOT NULL DEFAULT 'trial'"),
+        ("trial_inicio",          "TIMESTAMP NOT NULL DEFAULT NOW()"),
+        ("trial_aviso_enviado",   "BOOLEAN NOT NULL DEFAULT FALSE"),
+        ("trial_expirou_email",   "BOOLEAN NOT NULL DEFAULT FALSE"),
+    ]:
+        run_query(f"""DO $$ BEGIN IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name='usuarios' AND column_name='{col}'
+        ) THEN ALTER TABLE usuarios ADD COLUMN {col} {defn}; END IF; END$$""")
+
+    # Índice OAuth
+    run_query("""CREATE UNIQUE INDEX IF NOT EXISTS idx_usuarios_provider
+        ON usuarios(provedor, provider_id)
+        WHERE provider_id IS NOT NULL AND provider_id <> ''"""))
 
 @st.cache_resource
 def init_db_once():
