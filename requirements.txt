@@ -1,3 +1,11 @@
 streamlit
 psycopg2-binary
 pandas
+# OAuth
+google-auth==2.29.0
+google-auth-oauthlib==1.2.0
+requests==2.31.0
+PyJWT==2.8.0
+
+# Apple Sign-In  
+cryptography==42.0.5
