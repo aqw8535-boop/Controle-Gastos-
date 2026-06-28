@@ -55,15 +55,14 @@ APPLE_TOKEN_URL  = "https://appleid.apple.com/auth/token"
 # ══════════════════════════════════════════
 
 def google_get_auth_url(state):
-    # Pega os dados dinamicamente do seu secrets
+    # Puxa direto do secrets configurado no painel do Streamlit Cloud
     client_id = st.secrets["google_oauth"]["client_id"]
     redirect_uri = st.secrets["google_oauth"]["redirect_uri"]
     
-    # Monta a URL injetando a redirect_uri limpa do secrets
     url = (
         f"https://accounts.google.com/o/oauth2/v2/auth?"
-        f"client_id={client_id}&"
-        f"redirect_uri={redirect_uri}&"
+        f"client_id={client_id.strip()}&"  # .strip() remove qualquer espaço invisível bizarro
+        f"redirect_uri={redirect_uri.strip()}&"
         f"response_type=code&"
         f"scope=openid%20email%20profile&"
         f"state={state}"
@@ -71,24 +70,20 @@ def google_get_auth_url(state):
     return url
 
 def google_exchange_code(code: str) -> dict | None:
-    """
-    Troca o authorization code pelos dados do usuário Google.
-    Retorna dict com provider_id, email, nome, avatar_url, provedor.
-    """
     GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
     GOOGLE_USERINFO  = "https://www.googleapis.com/oauth2/v3/userinfo"
     
     try:
-        # 🚀 AGORA DINÂMICO: Puxa direto do secrets para bater 100% com a URL da home
+        # Puxa rigorosamente as mesmas chaves do secrets
         client_id     = st.secrets["google_oauth"]["client_id"]
         client_secret = st.secrets["google_oauth"]["client_secret"]
         redirect_uri  = st.secrets["google_oauth"]["redirect_uri"]
 
         token_resp = requests.post(GOOGLE_TOKEN_URL, data={
             "code":          code,
-            "client_id":     client_id,       # 👈 Atualizado dinâmico
-            "client_secret": client_secret,   # 👈 Atualizado dinâmico
-            "redirect_uri":  redirect_uri,    # 👈 Importante: precisa ser rigorosamente igual ao que gerou o login!
+            "client_id":     client_id.strip(),
+            "client_secret": client_secret.strip(),
+            "redirect_uri":  redirect_uri.strip(),
             "grant_type":    "authorization_code",
         }, timeout=10)
         token_resp.raise_for_status()
@@ -110,7 +105,6 @@ def google_exchange_code(code: str) -> dict | None:
     except Exception as e:
         st.error(f"❌ Erro no OAuth Google (Exchange): {e}")
         return None
-
 # ══════════════════════════════════════════
 #  SEÇÃO B — APPLE SIGN-IN
 # ══════════════════════════════════════════
