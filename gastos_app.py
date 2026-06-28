@@ -1,27 +1,34 @@
+# gastos_app.py — Gastei | versão refatorada com Google OAuth + Trial de 7 dias
+# Ordem de execução garantida: imports → config → session_state → CSS →
+# get_pool → run_query → CALLBACK OAUTH → init_db → helpers → funções →
+# validação de sessão "s" → tela login (se não logado) → app principal
+
 import streamlit as st
 import psycopg2
 import psycopg2.extras
 import psycopg2.pool
 import pandas as pd
-from datetime import date, timedelta
+import requests
 import hashlib
 import hmac
 import re
 import calendar
 import smtplib
 import secrets as _secrets
+from datetime import date, timedelta
+from urllib.parse import urlencode
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-# ── NOVO: importa módulo de auth e trial ──
-from gastei_auth import (
-    google_get_auth_url, google_exchange_code,
-    apple_get_auth_url,  apple_exchange_code,
-    upsert_usuario_oauth,
-    verificar_acesso_trial,
-    renderizar_tela_bloqueio,
-    rodar_job_emails_trial,
-    TRIAL_DIAS, KIWIFY_URL,
-)
+
+# ─────────────────────────────────────────────
+#  CONSTANTES GLOBAIS
+# ─────────────────────────────────────────────
+TRIAL_DIAS       = 7
+KIWIFY_URL       = "https://pay.kiwify.com.br/CtPYesz"
+WA_SUPORTE       = "5567991158892"
+GOOGLE_AUTH_URL  = "https://accounts.google.com/o/oauth2/v2/auth"
+GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
+GOOGLE_INFO_URL  = "https://www.googleapis.com/oauth2/v3/userinfo"
 
 # ─────────────────────────────────────────────
 #  CONFIG DA PÁGINA
@@ -35,7 +42,7 @@ st.markdown("""
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Gastos">
+<meta name="apple-mobile-web-app-title" content="Gastei">
 <meta name="theme-color" content="#6a3de8">
 <meta name="application-name" content="Controle de Gastos">
 """, unsafe_allow_html=True)
@@ -52,175 +59,91 @@ _SS_DEFAULTS = {
     "reset_step":         0,
     "reset_email":        "",
     "_salario_carregado": False,
-    "oauth_state":        "",    # CSRF token do Google OAuth
+    "oauth_state":        "",
 }
 for _k, _v in _SS_DEFAULTS.items():
     if _k not in st.session_state:
         st.session_state[_k] = _v
 
-# FUNÇÃO REATIVA DO SELETOR: Roda no exato milésimo de segundo do clique!
-def mudar_idioma_callback():
-    if "seletor_idioma" in st.session_state:
-        _escolha = st.session_state["seletor_idioma"]
-        if "English" in _escolha:
-            st.session_state.lang = "EN"
-        elif "Français" in _escolha:
-            st.session_state.lang = "FR"
-        else:
-            st.session_state.lang = "PT"
-
-# ── NOVO: CAPTURA DO RETORNO DO GOOGLE OAUTH ────────────────────────────────
-_q_params = st.query_params
-
-if "code" in _q_params:
-    _code = _q_params["code"]
-    
-    with st.spinner("Autenticando com o Google..."):
-        try:
-            # 1. Troca o código temporário do Google pelos dados do usuário
-            dados_usuario = google_exchange_code(_code)
-            
-            if dados_usuario and "email" in dados_usuario:
-                # 2. Cria ou atualiza o usuário no banco de dados do Gastei
-                usuario_id = upsert_usuario_oauth(
-                    email=dados_usuario["email"],
-                    nome=dados_usuario.get("name", "Usuário Google"),
-                    provedor="google"
-                )
-                
-                # 3. Alimenta a sessão para o app saber que está logado de verdade
-                st.session_state.usuario_id = usuario_id
-                st.session_state.usuario_email = dados_usuario["email"]
-                st.session_state.usuario_nome = dados_usuario.get("name", "Usuário Google")
-                
-                # 🚀 O PULO DO GATO: Limpa o "?code=..." da URL para matar o loop infinito
-                st.query_params.clear()
-                
-                # 4. Dá o reboot limpo na tela já logado
-                st.rerun()
-                
-        except Exception as e:
-            st.error(f"Erro ao processar login social: {e}")
-            st.query_params.clear()
-# ─────────────────────────────────────────────────────────────────────────────
-
 # ─────────────────────────────────────────────
-#  MISSÃO 2 — FIXAR IDIOMA: lê/aplica ANTES de renderizar qualquer widget
-#  A chave "seletor_idioma" é estática; o valor vem sempre do session_state.
+#  IDIOMA — intercepta antes de qualquer widget
 # ─────────────────────────────────────────────
-_LANG_OPTIONS  = {"Português": "PT", "English": "EN", "Français": "FR"}
-_LANG_LABELS   = list(_LANG_OPTIONS.keys())
-_LANG_CODES    = list(_LANG_OPTIONS.values())
-
-# 1. INTERCEPTAÇÃO ANTICIPADA: Se o usuário mexer no rádio da tela de login,
-# atualizamos o estado interno antes de carregar o dicionário get_t()!
-if "seletor_idioma" in st.session_state and st.session_state["seletor_idioma"] is not None:
-    _escolha_usuario = st.session_state["seletor_idioma"]
-    _codigo_detectado = "PT"
-    
-    if "English" in _escolha_usuario:
-        _codigo_detectado = "EN"
-    elif "Français" in _escolha_usuario:
-        _codigo_detectado = "FR"
-        
-    if st.session_state.lang != _codigo_detectado:
-        st.session_state.lang = _codigo_detectado
+_LANG_CODES = ["PT", "EN", "FR"]
+if "seletor_idioma" in st.session_state and st.session_state["seletor_idioma"]:
+    _esc = st.session_state["seletor_idioma"]
+    _det = "EN" if "English" in _esc else ("FR" if "Français" in _esc else "PT")
+    if st.session_state.lang != _det:
+        st.session_state.lang = _det
         st.rerun()
-
-# 2. Garante que lang seja sempre um código válido por padrão
 if st.session_state.lang not in _LANG_CODES:
     st.session_state.lang = "PT"
+
 # ─────────────────────────────────────────────
-#  DICIONÁRIO I18N — TRILÍNGUE
+#  I18N — TRILÍNGUE
 # ─────────────────────────────────────────────
 IDIOMAS = {
     "PT": {
-        "app_subtitle":         "Finanças Pessoais Premium Inteligentes",
-        "ola":                  "Olá",
-        "sair":                 "🚪",
-        "aba_gastos":           "📊 Meus Gastos",
-        "aba_feedback":         "💬 Feedbacks & Sugestões",
-        "total_saidas":         "Total de Saídas Contratadas",
-        "comprometido_mes":     "Comprometido Este Mês",
+        "app_subtitle": "Finanças Pessoais Premium Inteligentes",
+        "ola": "Olá", "sair": "🚪",
+        "aba_gastos": "📊 Meus Gastos", "aba_feedback": "💬 Feedbacks & Sugestões",
+        "total_saidas": "Total de Saídas Contratadas",
+        "comprometido_mes": "Comprometido Este Mês",
         "salario_comprometido": "Salário Comprometido (Próx. Mês)",
-        "novo_lancamento":      "➕ Novo Lançamento",
-        "o_que_comprou":        "O que comprou / Pagou",
-        "placeholder_desc":     "Ex: iPhone 16, Aluguel, Internet...",
-        "valor_total":          "Valor Total (R$)",
-        "conta_fixa":           "🔁 Conta Fixa / Recorrente (sem data de término — Aluguel, Internet...)",
-        "dia_vencimento":       "Dia de Vencimento (Data de Início)",
-        "num_parcelas":         "Número de Parcelas",
-        "data_primeiro_venc":   "Data do Primeiro Vencimento",
-        "valor_mensal":         "**Valor mensal:**",
-        "tipo_recorrente":      "**Tipo:**",
-        "prox_vencimento":      "**Próximo vencimento:**",
-        "valor_parcela":        "**Valor por parcela:**",
-        "parcelas_restantes":   "**Parcelas restantes:**",
-        "venc_parcela1":        "**Vencimento da Parcela 1:**",
-        "salvar_lancamento":    "💾 Salvar Lançamento",
-        "salvo_sucesso":        "✅ **{}** salvo com sucesso!",
-        "err_descricao":        "⚠️ Preencha a descrição do gasto.",
-        "err_valor":            "⚠️ O valor deve ser maior que zero.",
-        "historico":            "### 📋 Histórico de Vencimentos",
-        "filtrar":              "🔍 Filtrar por descrição",
-        "placeholder_busca":    "Digite para buscar...",
-        "nenhum_lancamento":    "Nenhum lançamento ainda.",
-        "conta_atrasada_s":     "conta atrasada",
-        "conta_atrasada_p":     "contas atrasadas",
-        "conta_hoje_s":         "conta vence hoje",
-        "conta_hoje_p":         "contas vencem hoje",
-        "conta_breve_s":        "conta vence",
-        "conta_breve_p":        "contas vencem",
-        "alerta_breve_sufixo":  "nos próximos 3 dias",
-        "alerta_hoje_sufixo":   "não deixe passar!",
+        "novo_lancamento": "➕ Novo Lançamento",
+        "o_que_comprou": "O que comprou / Pagou",
+        "placeholder_desc": "Ex: iPhone 16, Aluguel, Internet...",
+        "valor_total": "Valor Total (R$)",
+        "conta_fixa": "🔁 Conta Fixa / Recorrente (sem data de término — Aluguel, Internet...)",
+        "dia_vencimento": "Dia de Vencimento (Data de Início)",
+        "num_parcelas": "Número de Parcelas",
+        "data_primeiro_venc": "Data do Primeiro Vencimento",
+        "valor_mensal": "**Valor mensal:**", "tipo_recorrente": "**Tipo:**",
+        "prox_vencimento": "**Próximo vencimento:**", "valor_parcela": "**Valor por parcela:**",
+        "parcelas_restantes": "**Parcelas restantes:**", "venc_parcela1": "**Vencimento da Parcela 1:**",
+        "salvar_lancamento": "💾 Salvar Lançamento",
+        "salvo_sucesso": "✅ **{}** salvo com sucesso!",
+        "err_descricao": "⚠️ Preencha a descrição do gasto.",
+        "err_valor": "⚠️ O valor deve ser maior que zero.",
+        "historico": "### 📋 Histórico de Vencimentos",
+        "filtrar": "🔍 Filtrar por descrição", "placeholder_busca": "Digite para buscar...",
+        "nenhum_lancamento": "Nenhum lançamento ainda.",
+        "conta_atrasada_s": "conta atrasada", "conta_atrasada_p": "contas atrasadas",
+        "conta_hoje_s": "conta vence hoje", "conta_hoje_p": "contas vencem hoje",
+        "conta_breve_s": "conta vence", "conta_breve_p": "contas vencem",
+        "alerta_breve_sufixo": "nos próximos 3 dias",
+        "alerta_hoje_sufixo": "não deixe passar!",
         "alerta_atrasada_sufixo": "quite agora para não acumular juros!",
-        "col_descricao":        "Descrição",
-        "col_valor":            "Valor",
-        "col_vencimento":       "Próximo Vencimento",
-        "col_situacao":         "Situação",
-        "col_acoes":            "Ações",
-        "label_mensal":         "mensal",
-        "label_parcela":        "por parcela",
-        "conta_mensal_fixa":    "Conta Mensal Fixa",
-        "total_label":          "Total:",
-        "inicio_label":         "Início:",
-        "divida_encerrada":     "Dívida Encerrada",
-        "ultima_parcela":       "Última parcela:",
-        "falta_pagar":          "Falta pagar:",
-        "recorrente_inf":       "Recorrente ∞",
-        "x_restantes":          "x restantes",
-        "btn_pagar":            "💸 Pagar Parcela",
-        "btn_quitar":           "🏁 Quitar Tudo",
-        "btn_excluir":          "🗑️ Excluir",
-        "salario_titulo":       "💰 Meu Salário Mensal",
-        "salario_input":        "Salário Mensal Líquido (R$)",
-        "salario_btn":          "💾 Salvar Salário",
-        "salario_salvo":        "✅ Salário atualizado!",
-        "salario_zero_aviso":   "⚠️ Cadastre seu salário no painel ⚙️ para ver o % comprometido.",
-        "pct_label":            "% do salário comprometido no próximo mês",
-        "sim_alerta":           (
+        "col_descricao": "Descrição", "col_valor": "Valor",
+        "col_vencimento": "Próximo Vencimento", "col_situacao": "Situação", "col_acoes": "Ações",
+        "label_mensal": "mensal", "label_parcela": "por parcela",
+        "conta_mensal_fixa": "Conta Mensal Fixa", "total_label": "Total:", "inicio_label": "Início:",
+        "divida_encerrada": "Dívida Encerrada", "ultima_parcela": "Última parcela:",
+        "falta_pagar": "Falta pagar:", "recorrente_inf": "Recorrente ∞", "x_restantes": "x restantes",
+        "btn_pagar": "💸 Pagar Parcela", "btn_quitar": "🏁 Quitar Tudo", "btn_excluir": "🗑️ Excluir",
+        "salario_titulo": "💰 Meu Salário Mensal", "salario_input": "Salário Mensal Líquido (R$)",
+        "salario_btn": "💾 Salvar Salário", "salario_salvo": "✅ Salário atualizado!",
+        "salario_zero_aviso": "⚠️ Cadastre seu salário no painel ⚙️ para ver o % comprometido.",
+        "pct_label": "% do salário comprometido no próximo mês",
+        "sim_alerta": (
             "⚠️ TEM CERTEZA QUE QUER FAZER ESTA CONTA? {:.1f}% DO SEU SALÁRIO ESTARÁ COMPROMETIDO; "
             "É MELHOR NÃO FAZER ESTA CONTA, POIS ESTÁ ALÉM DO QUE VOCÊ CONSEGUE PAGAR PARA O PRÓXIMO MÊS!"
         ),
-        "sim_ok":               "✅ Dentro do limite saudável (abaixo de 70% do salário).",
-        "sim_info":             "💡 Com este gasto: **R$ {:.2f}/mês** comprometido ({:.1f}% do salário).",
-        "pref_fechar":          "Fechar",
-        "feedback_titulo":      "### 💬 Canal Direct de Sugestões & Feedbacks",
-        "feedback_sub":         "Sua opinião molda as próximas atualizações da nossa plataforma!",
-        "feedback_label":       "Sua mensagem",
-        "feedback_placeholder": "Ex: Seria massa ver um gráfico de pizza no topo... Ou: Encontrei um bug visual no botão X...",
-        "feedback_btn":         "📨 Enviar Meu Feedback",
-        "feedback_vazio":       "⚠️ Escreva algo antes de clicar em enviar.",
-        "feedback_curto":       "⚠️ Detalhe um pouquinho mais a sua mensagem.",
-        "feedback_ok":          "✅ Feedback enviado com absoluto sucesso! Muito obrigado 🙏",
-        "rodape":               "© 2026 Gastei App. Todos os direitos reservados. Suporte: finatechsuporte@gmail.com",
-        "idioma_label":         "🌐 Idioma",
-        "login_titulo_app": "Finanças Premium",
-        "login_sub_app": "Controle de Gastos de Alta Performance",
-        "aba_entrar": "🔑  Entrar",
-        "aba_criar_conta": "✨  Criar Conta",
-        "btn_entrar_seta": "Entrar →",
-        "err_preencha_dados": "Preencha e-mail e senha.",
+        "sim_ok": "✅ Dentro do limite saudável (abaixo de 70% do salário).",
+        "sim_info": "💡 Com este gasto: **R$ {:.2f}/mês** comprometido ({:.1f}% do salário).",
+        "pref_fechar": "Fechar",
+        "feedback_titulo": "### 💬 Canal Direct de Sugestões & Feedbacks",
+        "feedback_sub": "Sua opinião molda as próximas atualizações da nossa plataforma!",
+        "feedback_label": "Sua mensagem",
+        "feedback_placeholder": "Ex: Seria massa ver um gráfico de pizza no topo...",
+        "feedback_btn": "📨 Enviar Meu Feedback",
+        "feedback_vazio": "⚠️ Escreva algo antes de clicar em enviar.",
+        "feedback_curto": "⚠️ Detalhe um pouquinho mais a sua mensagem.",
+        "feedback_ok": "✅ Feedback enviado com absoluto sucesso! Muito obrigado 🙏",
+        "rodape": "© 2026 Gastei App. Todos os direitos reservados. Suporte: finatechsuporte@gmail.com",
+        "idioma_label": "🌐 Idioma",
+        "login_titulo_app": "Finanças Premium", "login_sub_app": "Controle de Gastos de Alta Performance",
+        "aba_entrar": "🔑  Entrar", "aba_criar_conta": "✨  Criar Conta",
+        "btn_entrar_seta": "Entrar →", "err_preencha_dados": "Preencha e-mail e senha.",
         "msg_suporte_wa": "Olá! Quero verificar o status do meu acesso no app Gastei.",
         "link_suporte": "Problemas com o acesso? — Falar com o Suporte",
         "link_vendas": "Ainda não tem acesso? Conheça o Gastei →",
@@ -228,250 +151,166 @@ IDIOMAS = {
         "expander_termos": "🛡️ Termos de Uso e Política de Privacidade",
         "texto_termos": "Seus dados financeiros são armazenados de forma criptografada e privativa. Não compartilhamos suas informações.",
         "info_reset_email": "📧 Informe o e-mail cadastrado. Enviaremos um código de 6 dígitos.",
-        "input_email_cadastrado": "E-mail cadastrado",
-        "btn_enviar_codigo": "Enviar código →",
+        "input_email_cadastrado": "E-mail cadastrado", "btn_enviar_codigo": "Enviar código →",
         "err_email_nao_encontrado": "E-mail não encontrado.",
         "sucesso_codigo_enviado": "✅ Código enviado para **{}**.",
-        "input_codigo_digitos": "Código de 6 dígitos",
-        "input_nova_senha": "Nova senha",
-        "input_confirmar_nova": "Confirmar nova senha",
-        "btn_redefinir_senha": "Redefinir senha →",
-        "err_informe_codigo": "Informe o código.",
-        "err_senha_curta": "Mínimo 6 caracteres.",
-        "err_senhas_diferentes": "Senhas não conferem.",
-        "err_codigo_expirado": "Código inválido ou expirado.",
+        "input_codigo_digitos": "Código de 6 dígitos", "input_nova_senha": "Nova senha",
+        "input_confirmar_nova": "Confirmar nova senha", "btn_redefinir_senha": "Redefinir senha →",
+        "err_informe_codigo": "Informe o código.", "err_senha_curta": "Mínimo 6 caracteres.",
+        "err_senhas_diferentes": "Senhas não conferem.", "err_codigo_expirado": "Código inválido ou expirado.",
         "sucesso_senha_redefinida": "🎉 Senha redefinida! Faça login.",
-        "input_nome": "Seu nome",
-        "input_telefone": "WhatsApp / Telefone",
-        "input_confirmar_senha": "Confirmar senha",
-        "btn_criar_conta": "Criar minha conta →",
-        "err_campos_vazios": "Preencha todos os campos.",
-        "err_tel_invalido": "Telefone inválido.",
+        "input_nome": "Seu nome", "input_telefone": "WhatsApp / Telefone",
+        "input_confirmar_senha": "Confirmar senha", "btn_criar_conta": "Criar minha conta →",
+        "err_campos_vazios": "Preencha todos os campos.", "err_tel_invalido": "Telefone inválido.",
         "sucesso_conta_criada": "✅ Conta criada! Faça login na aba ao lado.",
-        
+        "não_autorizado": "Acesso Negado! Este e-mail não possui licença ativa.",
+        "assinatura_expirada": "Assinatura expirada! Renove para reativar.",
+        "input_email": "E-mail", "holder_email": "seu@email.com", "input_senha": "Senha",
+        "link_esqueceu": "🔑 Esqueci minha senha",
+        "err_bloqueado": "🛑 Acesso Bloqueado! Assinatura expirada ou e-mail não autorizado.",
+        "err_dados_invalidos": "E-mail ou senha incorretos.",
+        "trial_aviso": "⏰ Seu teste grátis termina em **{} dia(s)**!",
+        "trial_assinar": "🔓 Assinar agora",
     },
     "EN": {
-        "não_autorizado": "Access Denied! This email does not have an active license.",
-        "assinatura_expirada": "Subscription expired! Renew to reactivate.",
-        "cad_senha2": "repeat password", 
-        "email_cad": "The same email address used for the purchase.",
-        "link_esqueceu": "🔑 I forgot my Password",
-        "holder_email": "my@email.com",
-        "input_senha": "Password",
-        "input_nova_senha": "New Password",
-        "input_confirmar_nova": "Confirm New Password",
-        "input_confirmar_senha": "Confirm Password",
-        "app_subtitle":         "Intelligent Premium Personal Finance",
-        "ola":                  "Hello",
-        "sair":                 "🚪",
-        "aba_gastos":           "📊 My Expenses",
-        "aba_feedback":         "💬 Feedback & Suggestions",
-        "total_saidas":         "Total Contracted Expenses",
-        "comprometido_mes":     "Committed This Month",
+        "app_subtitle": "Intelligent Premium Personal Finance",
+        "ola": "Hello", "sair": "🚪",
+        "aba_gastos": "📊 My Expenses", "aba_feedback": "💬 Feedback & Suggestions",
+        "total_saidas": "Total Contracted Expenses",
+        "comprometido_mes": "Committed This Month",
         "salario_comprometido": "Salary Committed (Next Month)",
-        "novo_lancamento":      "➕ New Entry",
-        "o_que_comprou":        "What did you buy / pay",
-        "placeholder_desc":     "e.g.: iPhone 16, Rent, Internet...",
-        "valor_total":          "Total Amount (R$)",
-        "conta_fixa":           "🔁 Fixed / Recurring Bill (no end date — Rent, Internet...)",
-        "dia_vencimento":       "Due Day (Start Date)",
-        "num_parcelas":         "Number of Installments",
-        "data_primeiro_venc":   "First Due Date",
-        "valor_mensal":         "**Monthly amount:**",
-        "tipo_recorrente":      "**Type:**",
-        "prox_vencimento":      "**Next due date:**",
-        "valor_parcela":        "**Installment value:**",
-        "parcelas_restantes":   "**Remaining installments:**",
-        "venc_parcela1":        "**Due date of installment 1:**",
-        "salvar_lancamento":    "💾 Save Entry",
-        "salvo_sucesso":        "✅ **{}** saved successfully!",
-        "err_descricao":        "⚠️ Please fill in the expense description.",
-        "err_valor":            "⚠️ Amount must be greater than zero.",
-        "historico":            "### 📋 Payment History",
-        "filtrar":              "🔍 Filter by description",
-        "placeholder_busca":    "Type to search...",
-        "nenhum_lancamento":    "No entries yet.",
-        "conta_atrasada_s":     "overdue bill",
-        "conta_atrasada_p":     "overdue bills",
-        "conta_hoje_s":         "bill due today",
-        "conta_hoje_p":         "bills due today",
-        "conta_breve_s":        "bill due",
-        "conta_breve_p":        "bills due",
-        "alerta_breve_sufixo":  "in the next 3 days",
-        "alerta_hoje_sufixo":   "don't let it pass!",
+        "novo_lancamento": "➕ New Entry", "o_que_comprou": "What did you buy / pay",
+        "placeholder_desc": "e.g.: iPhone 16, Rent, Internet...", "valor_total": "Total Amount (R$)",
+        "conta_fixa": "🔁 Fixed / Recurring Bill (no end date — Rent, Internet...)",
+        "dia_vencimento": "Due Day (Start Date)", "num_parcelas": "Number of Installments",
+        "data_primeiro_venc": "First Due Date", "valor_mensal": "**Monthly amount:**",
+        "tipo_recorrente": "**Type:**", "prox_vencimento": "**Next due date:**",
+        "valor_parcela": "**Installment value:**", "parcelas_restantes": "**Remaining installments:**",
+        "venc_parcela1": "**Due date of installment 1:**", "salvar_lancamento": "💾 Save Entry",
+        "salvo_sucesso": "✅ **{}** saved successfully!", "err_descricao": "⚠️ Please fill in the expense description.",
+        "err_valor": "⚠️ Amount must be greater than zero.", "historico": "### 📋 Payment History",
+        "filtrar": "🔍 Filter by description", "placeholder_busca": "Type to search...",
+        "nenhum_lancamento": "No entries yet.",
+        "conta_atrasada_s": "overdue bill", "conta_atrasada_p": "overdue bills",
+        "conta_hoje_s": "bill due today", "conta_hoje_p": "bills due today",
+        "conta_breve_s": "bill due", "conta_breve_p": "bills due",
+        "alerta_breve_sufixo": "in the next 3 days", "alerta_hoje_sufixo": "don't let it pass!",
         "alerta_atrasada_sufixo": "pay now to avoid late fees!",
-        "col_descricao":        "Description",
-        "col_valor":            "Amount",
-        "col_vencimento":       "Next Due Date",
-        "col_situacao":         "Status",
-        "col_acoes":            "Actions",
-        "label_mensal":         "monthly",
-        "label_parcela":        "per installment",
-        "conta_mensal_fixa":    "Fixed Monthly Bill",
-        "total_label":          "Total:",
-        "inicio_label":         "Start:",
-        "divida_encerrada":     "Debt Settled",
-        "ultima_parcela":       "Last installment:",
-        "falta_pagar":          "Remaining:",
-        "recorrente_inf":       "Recurring ∞",
-        "x_restantes":          "remaining",
-        "btn_pagar":            "💸 Pay Installment",
-        "btn_quitar":           "🏁 Pay Off All",
-        "btn_excluir":          "🗑️ Delete",
-        "salario_titulo":       "💰 My Monthly Salary",
-        "salario_input":        "Net Monthly Salary (R$)",
-        "salario_btn":          "💾 Save Salary",
-        "salario_salvo":        "✅ Salary updated!",
-        "salario_zero_aviso":   "⚠️ Set your salary in the ⚙️ panel to see the committed % of income.",
-        "pct_label":            "% of salary committed next month",
-        "sim_alerta":           (
+        "col_descricao": "Description", "col_valor": "Amount",
+        "col_vencimento": "Next Due Date", "col_situacao": "Status", "col_acoes": "Actions",
+        "label_mensal": "monthly", "label_parcela": "per installment",
+        "conta_mensal_fixa": "Fixed Monthly Bill", "total_label": "Total:", "inicio_label": "Start:",
+        "divida_encerrada": "Debt Settled", "ultima_parcela": "Last installment:",
+        "falta_pagar": "Remaining:", "recorrente_inf": "Recurring ∞", "x_restantes": "remaining",
+        "btn_pagar": "💸 Pay Installment", "btn_quitar": "🏁 Pay Off All", "btn_excluir": "🗑️ Delete",
+        "salario_titulo": "💰 My Monthly Salary", "salario_input": "Net Monthly Salary (R$)",
+        "salario_btn": "💾 Save Salary", "salario_salvo": "✅ Salary updated!",
+        "salario_zero_aviso": "⚠️ Set your salary in the ⚙️ panel to see the committed % of income.",
+        "pct_label": "% of salary committed next month",
+        "sim_alerta": (
             "⚠️ ARE YOU SURE YOU WANT TO MAKE THIS EXPENSE? {:.1f}% OF YOUR SALARY WILL BE COMMITTED; "
             "IT IS BETTER NOT TO MAKE THIS EXPENSE, AS IT IS BEYOND WHAT YOU CAN AFFORD FOR NEXT MONTH!"
         ),
-        "sim_ok":               "✅ Within healthy limit (below 70% of salary).",
-        "sim_info":             "💡 With this expense: **R$ {:.2f}/month** committed ({:.1f}% of salary).",
-        "pref_fechar":          "Close",
-        "feedback_titulo":      "### 💬 Suggestions & Feedback Channel",
-        "feedback_sub":         "Your opinion shapes the next updates to our platform!",
-        "feedback_label":       "Your message",
-        "feedback_placeholder": "e.g.: It'd be great to see a pie chart at the top... Or: I found a visual bug in button X...",
-        "feedback_btn":         "📨 Send My Feedback",
-        "feedback_vazio":       "⚠️ Please write something before clicking send.",
-        "feedback_curto":       "⚠️ Please elaborate a little more on your message.",
-        "feedback_ok":          "✅ Feedback sent successfully! Thank you so much 🙏",
-        "rodape":               "© 2026 Gastei App. All rights reserved. Support: finatechsuporte@gmail.com",
-        "idioma_label":         "🌐 Language",
-        "login_titulo_app": "Premium Finance",
-        "login_sub_app": "High Performance Expense Control",
-        "aba_entrar": "🔑  Login",
-        "aba_criar_conta": "✨  Register",
-        "btn_entrar_seta": "Login →",
-        "err_preencha_dados": "Please enter email and password.",
-        "msg_suporte_wa": "Hello! I want to check my access status on the Gastei app.",
-        "link_suporte": "Access issues? — Contact Support",
-        "link_vendas": "Don't have access yet? Discover Gastei →",
-        "link_vendas_planos": "Haven't bought yet? Check plans →",
+        "sim_ok": "✅ Within healthy limit (below 70% of salary).",
+        "sim_info": "💡 With this expense: **R$ {:.2f}/month** committed ({:.1f}% of salary).",
+        "pref_fechar": "Close",
+        "feedback_titulo": "### 💬 Suggestions & Feedback Channel",
+        "feedback_sub": "Your opinion shapes the next updates to our platform!",
+        "feedback_label": "Your message",
+        "feedback_placeholder": "e.g.: It'd be great to see a pie chart at the top...",
+        "feedback_btn": "📨 Send My Feedback",
+        "feedback_vazio": "⚠️ Please write something before clicking send.",
+        "feedback_curto": "⚠️ Please elaborate a little more on your message.",
+        "feedback_ok": "✅ Feedback sent successfully! Thank you so much 🙏",
+        "rodape": "© 2026 Gastei App. All rights reserved. Support: finatechsuporte@gmail.com",
+        "idioma_label": "🌐 Language",
+        "login_titulo_app": "Premium Finance", "login_sub_app": "High-Performance Expense Control",
+        "aba_entrar": "🔑  Login", "aba_criar_conta": "✨  Create Account",
+        "btn_entrar_seta": "Login →", "err_preencha_dados": "Please fill in email and password.",
+        "msg_suporte_wa": "Hello! I want to check the status of my access in the Gastei app.",
+        "link_suporte": "Access problems? — Contact Support",
+        "link_vendas": "Don't have access yet? Meet Gastei →",
+        "link_vendas_planos": "Haven't purchased yet? See the plans →",
         "expander_termos": "🛡️ Terms of Use and Privacy Policy",
-        "texto_termos": "Your financial data is stored encrypted and private. We do not share your information.",
-        "info_reset_email": "📧 Enter your registered email. We will send a 6-digit code.",
-        "input_email_cadastrado": "Registered Email",
-        "btn_enviar_codigo": "Send code →",
+        "texto_termos": "Your financial data is stored in an encrypted and private way. We do not share your information.",
+        "info_reset_email": "📧 Enter your registered email. We'll send a 6-digit code.",
+        "input_email_cadastrado": "Registered email", "btn_enviar_codigo": "Send code →",
         "err_email_nao_encontrado": "Email not found.",
         "sucesso_codigo_enviado": "✅ Code sent to **{}**.",
-        "input_codigo_digitos": "6-digit code",
-        "input_nova_senha": "New password",
-        "input_confirmar_nova": "Confirm new password",
-        "btn_redefinir_senha": "Reset password →",
-        "err_informe_codigo": "Enter the code.",
-        "err_senha_curta": "Minimum 6 characters.",
-        "err_senhas_diferentes": "Passwords do not match.",
-        "err_codigo_expirado": "Invalid or expired code.",
+        "input_codigo_digitos": "6-digit code", "input_nova_senha": "New password",
+        "input_confirmar_nova": "Confirm new password", "btn_redefinir_senha": "Reset password →",
+        "err_informe_codigo": "Enter the code.", "err_senha_curta": "Minimum 6 characters.",
+        "err_senhas_diferentes": "Passwords don't match.", "err_codigo_expirado": "Invalid or expired code.",
         "sucesso_senha_redefinida": "🎉 Password reset! Please login.",
-        "input_nome": "Your name",
-        "input_telefone": "WhatsApp / Phone",
-        "input_confirmar_senha": "Confirm password",
-        "btn_criar_conta": "Create my account →",
-        "err_campos_vazios": "Please fill in all fields.",
-        "err_tel_invalido": "Invalid phone number.",
-        "sucesso_conta_criada": "✅ Account created! Login in the next tab.",
+        "input_nome": "Your name", "input_telefone": "WhatsApp / Phone",
+        "input_confirmar_senha": "Confirm password", "btn_criar_conta": "Create my account →",
+        "err_campos_vazios": "Please fill in all fields.", "err_tel_invalido": "Invalid phone number.",
+        "sucesso_conta_criada": "✅ Account created! Log in on the next tab.",
+        "não_autorizado": "Access Denied! This email does not have an active license.",
+        "assinatura_expirada": "Subscription expired! Renew to reactivate.",
+        "input_email": "Email", "holder_email": "your@email.com", "input_senha": "Password",
+        "link_esqueceu": "🔑 Forgot my password",
+        "err_bloqueado": "🛑 Access Blocked! Subscription expired or email not authorized.",
+        "err_dados_invalidos": "Incorrect email or password.",
+        "trial_aviso": "⏰ Your free trial ends in **{} day(s)**!",
+        "trial_assinar": "🔓 Subscribe now",
     },
     "FR": {
-        "não_autorizado": "Accès refusé ! Ce courriel ne possède pas de licence active.",
-        "assinatura_expirada": "Abonnement expiré ! Renouvelez-le pour le réactiver.",
-        "cad_senha2": "Répéter le mot de passe",    
-        "email_cad": "La même adresse e-mail que celle utilisée pour l'achat.",
-        "link_esqueceu": "🔑 j'ai oublié mon mot de passe",
-        "holder_email": "mon@email.com",
-        "input_senha": "Mot de passe",
-        "input_nova_senha": "Nouveau mot de passe",
-        "input_confirmar_nova": "Confirmer le mot de passe",
-        "input_confirmar_senha": "Confirmer le mot de passe",
-        "app_subtitle":         "Finances Personnelles Premium Intelligentes",
-        "ola":                  "Bonjour",
-        "sair":                 "🚪",
-        "aba_gastos":           "📊 Mes Dépenses",
-        "aba_feedback":         "💬 Retours & Suggestions",
-        "total_saidas":         "Total des Dépenses Contractées",
-        "comprometido_mes":     "Engagé Ce Mois",
+        "app_subtitle": "Finances Personnelles Premium Intelligentes",
+        "ola": "Bonjour", "sair": "🚪",
+        "aba_gastos": "📊 Mes Dépenses", "aba_feedback": "💬 Retours & Suggestions",
+        "total_saidas": "Total des Dépenses Contractées",
+        "comprometido_mes": "Engagé Ce Mois",
         "salario_comprometido": "Salaire Engagé (Mois Prochain)",
-        "novo_lancamento":      "➕ Nouvelle Entrée",
-        "o_que_comprou":        "Qu'avez-vous acheté / payé",
-        "placeholder_desc":     "Ex: iPhone 16, Loyer, Internet...",
-        "valor_total":          "Montant Total (R$)",
-        "conta_fixa":           "🔁 Facture Fixe / Récurrente (sans date de fin — Loyer, Internet...)",
-        "dia_vencimento":       "Jour d'Échéance (Date de Début)",
-        "num_parcelas":         "Nombre de Versements",
-        "data_primeiro_venc":   "Date de la Première Échéance",
-        "valor_mensal":         "**Montant mensuel :**",
-        "tipo_recorrente":      "**Type :**",
-        "prox_vencimento":      "**Prochaine échéance :**",
-        "valor_parcela":        "**Valeur du versement :**",
-        "parcelas_restantes":   "**Versements restants :**",
-        "venc_parcela1":        "**Échéance du versement 1 :**",
-        "salvar_lancamento":    "💾 Enregistrer",
-        "salvo_sucesso":        "✅ **{}** enregistré avec succès !",
-        "err_descricao":        "⚠️ Veuillez renseigner la description de la dépense.",
-        "err_valor":            "⚠️ Le montant doit être supérieur à zéro.",
-        "historico":            "### 📋 Historique des Échéances",
-        "filtrar":              "🔍 Filtrer par description",
-        "placeholder_busca":    "Tapez pour rechercher...",
-        "nenhum_lancamento":    "Aucune entrée pour l'instant.",
-        "conta_atrasada_s":     "facture en retard",
-        "conta_atrasada_p":     "factures en retard",
-        "conta_hoje_s":         "facture due aujourd'hui",
-        "conta_hoje_p":         "factures dues aujourd'hui",
-        "conta_breve_s":        "facture due",
-        "conta_breve_p":        "factures dues",
-        "alerta_breve_sufixo":  "dans les 3 prochains jours",
-        "alerta_hoje_sufixo":   "ne laissez pas passer !",
+        "novo_lancamento": "➕ Nouvelle Entrée", "o_que_comprou": "Qu'avez-vous acheté / payé",
+        "placeholder_desc": "Ex: iPhone 16, Loyer, Internet...", "valor_total": "Montant Total (R$)",
+        "conta_fixa": "🔁 Facture Fixe / Récurrente (sans date de fin — Loyer, Internet...)",
+        "dia_vencimento": "Jour d'Échéance (Date de Début)", "num_parcelas": "Nombre de Versements",
+        "data_primeiro_venc": "Date de la Première Échéance", "valor_mensal": "**Montant mensuel :**",
+        "tipo_recorrente": "**Type :**", "prox_vencimento": "**Prochaine échéance :**",
+        "valor_parcela": "**Valeur du versement :**", "parcelas_restantes": "**Versements restants :**",
+        "venc_parcela1": "**Échéance du versement 1 :**", "salvar_lancamento": "💾 Enregistrer",
+        "salvo_sucesso": "✅ **{}** enregistré avec succès !",
+        "err_descricao": "⚠️ Veuillez renseigner la description de la dépense.",
+        "err_valor": "⚠️ Le montant doit être supérieur à zéro.", "historico": "### 📋 Historique des Échéances",
+        "filtrar": "🔍 Filtrer par description", "placeholder_busca": "Tapez pour rechercher...",
+        "nenhum_lancamento": "Aucune entrée pour l'instant.",
+        "conta_atrasada_s": "facture en retard", "conta_atrasada_p": "factures en retard",
+        "conta_hoje_s": "facture due aujourd'hui", "conta_hoje_p": "factures dues aujourd'hui",
+        "conta_breve_s": "facture due", "conta_breve_p": "factures dues",
+        "alerta_breve_sufixo": "dans les 3 prochains jours", "alerta_hoje_sufixo": "ne laissez pas passer !",
         "alerta_atrasada_sufixo": "payez maintenant pour éviter les pénalités !",
-        "col_descricao":        "Description",
-        "col_valor":            "Montant",
-        "col_vencimento":       "Prochaine Échéance",
-        "col_situacao":         "Statut",
-        "col_acoes":            "Actions",
-        "label_mensal":         "mensuel",
-        "label_parcela":        "par versement",
-        "conta_mensal_fixa":    "Facture Mensuelle Fixe",
-        "total_label":          "Total :",
-        "inicio_label":         "Début :",
-        "divida_encerrada":     "Dette Réglée",
-        "ultima_parcela":       "Dernier versement :",
-        "falta_pagar":          "Reste à payer :",
-        "recorrente_inf":       "Récurrent ∞",
-        "x_restantes":          "restants",
-        "btn_pagar":            "💸 Payer le Versement",
-        "btn_quitar":           "🏁 Tout Régler",
-        "btn_excluir":          "🗑️ Supprimer",
-        "salario_titulo":       "💰 Mon Salaire Mensuel",
-        "salario_input":        "Salaire Mensuel Net (R$)",
-        "salario_btn":          "💾 Sauvegarder",
-        "salario_salvo":        "✅ Salaire mis à jour !",
-        "salario_zero_aviso":   "⚠️ Enregistrez votre salaire dans le panneau ⚙️ pour voir le % engagé.",
-        "pct_label":            "% du salaire engagé le mois prochain",
-        "sim_alerta":           (
+        "col_descricao": "Description", "col_valor": "Montant",
+        "col_vencimento": "Prochaine Échéance", "col_situacao": "Statut", "col_acoes": "Actions",
+        "label_mensal": "mensuel", "label_parcela": "par versement",
+        "conta_mensal_fixa": "Facture Mensuelle Fixe", "total_label": "Total :", "inicio_label": "Début :",
+        "divida_encerrada": "Dette Réglée", "ultima_parcela": "Dernier versement :",
+        "falta_pagar": "Reste à payer :", "recorrente_inf": "Récurrent ∞", "x_restantes": "restants",
+        "btn_pagar": "💸 Payer le Versement", "btn_quitar": "🏁 Tout Régler", "btn_excluir": "🗑️ Supprimer",
+        "salario_titulo": "💰 Mon Salaire Mensuel", "salario_input": "Salaire Mensuel Net (R$)",
+        "salario_btn": "💾 Sauvegarder", "salario_salvo": "✅ Salaire mis à jour !",
+        "salario_zero_aviso": "⚠️ Enregistrez votre salaire dans le panneau ⚙️ pour voir le % engagé.",
+        "pct_label": "% du salaire engagé le mois prochain",
+        "sim_alerta": (
             "⚠️ ÊTES-VOUS SÛR DE VOULOIR FAIRE CETTE DÉPENSE ? {:.1f}% DE VOTRE SALAIRE SERA ENGAGÉ ; "
             "IL VAUT MIEUX NE PAS FAIRE CETTE DÉPENSE, CAR ELLE DÉPASSE CE QUE VOUS POUVEZ PAYER POUR LE MOIS PROCHAIN !"
         ),
-        "sim_ok":               "✅ Dans la limite saine (moins de 70% du salaire).",
-        "sim_info":             "💡 Avec cette dépense : **R$ {:.2f}/mois** engagé ({:.1f}% du salaire).",
-        "pref_fechar":          "Fermer",
-        "feedback_titulo":      "### 💬 Canal de Suggestions & Retours",
-        "feedback_sub":         "Votre avis façonne les prochaines mises à jour de notre plateforme !",
-        "feedback_label":       "Votre message",
-        "feedback_placeholder": "Ex : Ce serait super d'avoir un graphique en secteurs... Ou : J'ai trouvé un bug visuel sur le bouton X...",
-        "feedback_btn":         "📨 Envoyer Mon Retour",
-        "feedback_vazio":       "⚠️ Veuillez écrire quelque chose avant d'envoyer.",
-        "feedback_curto":       "⚠️ Veuillez développer un peu plus votre message.",
-        "feedback_ok":          "✅ Retour envoyé avec succès ! Merci beaucoup 🙏",
-        "rodape":               "© 2026 Gastei App. Tous droits réservés. Support : finatechsuporte@gmail.com",
-        "idioma_label":         "🌐 Langue",
-        "login_titulo_app": "Finances Premium",
-        "login_sub_app": "Contrôle des Dépenses Haute Performance",
-        "aba_entrar": "🔑  Connexion",
-        "aba_criar_conta": "✨  Créer un Compte",
-        "btn_entrar_seta": "Se connecter →",
-        "err_preencha_dados": "Veuillez entrer l'e-mail et le mot de passe.",
+        "sim_ok": "✅ Dans la limite saine (moins de 70% du salaire).",
+        "sim_info": "💡 Avec cette dépense : **R$ {:.2f}/mois** engagé ({:.1f}% du salaire).",
+        "pref_fechar": "Fermer",
+        "feedback_titulo": "### 💬 Canal de Suggestions & Retours",
+        "feedback_sub": "Votre avis façonne les prochaines mises à jour de notre plateforme !",
+        "feedback_label": "Votre message",
+        "feedback_placeholder": "Ex : Ce serait super d'avoir un graphique en secteurs...",
+        "feedback_btn": "📨 Envoyer Mon Retour",
+        "feedback_vazio": "⚠️ Veuillez écrire quelque chose avant d'envoyer.",
+        "feedback_curto": "⚠️ Veuillez développer un peu plus votre message.",
+        "feedback_ok": "✅ Retour envoyé avec succès ! Merci beaucoup 🙏",
+        "rodape": "© 2026 Gastei App. Tous droits réservés. Support : finatechsuporte@gmail.com",
+        "idioma_label": "🌐 Langue",
+        "login_titulo_app": "Finances Premium", "login_sub_app": "Contrôle des Dépenses Haute Performance",
+        "aba_entrar": "🔑  Connexion", "aba_criar_conta": "✨  Créer un Compte",
+        "btn_entrar_seta": "Se connecter →", "err_preencha_dados": "Veuillez entrer l'e-mail et le mot de passe.",
         "msg_suporte_wa": "Bonjour! Je souhaite vérifier le statut de mon accès sur l'application Gastei.",
         "link_suporte": "Problèmes d'accès? — Contacter le Support",
         "link_vendas": "Pas encore d'accès? Découvrez Gastei →",
@@ -479,32 +318,29 @@ IDIOMAS = {
         "expander_termos": "🛡️ Conditions d'Utilisation et Politique de Confidentialité",
         "texto_termos": "Vos données financières sont stockées de manière cryptée et privée. Nous ne partageons pas vos informations.",
         "info_reset_email": "📧 Entrez votre e-mail enregistré. Nous vous enverrons un code à 6 chiffres.",
-        "input_email_cadastrado": "E-mail enregistré",
-        "btn_enviar_codigo": "Envoyer le code →",
+        "input_email_cadastrado": "E-mail enregistré", "btn_enviar_codigo": "Envoyer le code →",
         "err_email_nao_encontrado": "E-mail non trouvé.",
         "sucesso_codigo_enviado": "✅ Code envoyé à **{}**.",
-        "input_codigo_digitos": "Code à 6 chiffres",
-        "input_nova_senha": "Nouveau mot de passe",
-        "input_confirmar_nova": "Confirmer le mot de passe",
-        "btn_redefinir_senha": "Réinitialiser le mot de passe →",
-        "err_informe_codigo": "Entrez le code.",
-        "err_senha_curta": "Minimum 6 caractères.",
-        "err_senhas_diferentes": "Les mots de passe ne correspondent pas.",
-        "err_codigo_expirado": "Code invalide ou expiré.",
+        "input_codigo_digitos": "Code à 6 chiffres", "input_nova_senha": "Nouveau mot de passe",
+        "input_confirmar_nova": "Confirmer le mot de passe", "btn_redefinir_senha": "Réinitialiser le mot de passe →",
+        "err_informe_codigo": "Entrez le code.", "err_senha_curta": "Minimum 6 caractères.",
+        "err_senhas_diferentes": "Les mots de passe ne correspondent pas.", "err_codigo_expirado": "Code invalide ou expiré.",
         "sucesso_senha_redefinida": "🎉 Mot de passe réinitialisé! Connectez-vous.",
-        "input_nome": "Votre nom",
-        "input_telefone": "WhatsApp / Téléphone",
-        "input_confirmar_senha": "Confirmer le mot de passe",
-        "btn_criar_conta": "Créer mon compte →",
-        "err_campos_vazios": "Veuillez remplir tous les champs.",
-        "err_tel_invalido": "Numéro de téléphone invalide.",
+        "input_nome": "Votre nom", "input_telefone": "WhatsApp / Téléphone",
+        "input_confirmar_senha": "Confirmer le mot de passe", "btn_criar_conta": "Créer mon compte →",
+        "err_campos_vazios": "Veuillez remplir tous les champs.", "err_tel_invalido": "Numéro de téléphone invalide.",
         "sucesso_conta_criada": "✅ Compte créé! Connectez-vous dans l'onglet d'à côté.",
+        "não_autorizado": "Accès Refusé! Cet e-mail n'a pas de licence active.",
+        "assinatura_expirada": "Abonnement expiré! Renouvelez pour réactiver.",
+        "input_email": "E-mail", "holder_email": "votre@email.com", "input_senha": "Mot de passe",
+        "link_esqueceu": "🔑 Mot de passe oublié",
+        "err_bloqueado": "🛑 Accès Bloqué! Abonnement expiré ou e-mail non autorisé.",
+        "err_dados_invalidos": "E-mail ou mot de passe incorrect.",
+        "trial_aviso": "⏰ Votre essai gratuit se termine dans **{} jour(s)** !",
+        "trial_assinar": "🔓 S'abonner maintenant",
     },
 }
 
-# ─────────────────────────────────────────────
-#  ATALHO GLOBAL — sempre lê do session_state
-# ─────────────────────────────────────────────
 def get_t():
     return IDIOMAS[st.session_state.lang]
 
@@ -516,196 +352,124 @@ st.markdown("""
 @import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
 html, body, [class*="css"] { font-family: 'Sora', sans-serif; }
 .stApp { background: linear-gradient(135deg, #0f0f1a 0%, #1a1a2e 50%, #16213e 100%); min-height: 100vh; }
-h1 {
-    font-family: 'Sora', sans-serif !important; font-weight: 700 !important;
+h1 { font-family: 'Sora', sans-serif !important; font-weight: 700 !important;
     background: linear-gradient(90deg, #e2c4f0, #9b8dff, #64b5f6);
-    -webkit-background-clip: text; -webkit-text-fill-color: transparent; letter-spacing: -0.5px;
-}
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; letter-spacing: -0.5px; }
 h2, h3 { font-family: 'Sora', sans-serif !important; color: #c9d1f0 !important; }
-
-/* LOGIN */
-.login-wrap {
-    max-width: 460px; margin: 60px auto 0;
+.login-wrap { max-width: 460px; margin: 60px auto 0;
     background: rgba(255,255,255,0.04); border: 1px solid rgba(155,141,255,0.2);
     border-radius: 24px; padding: 48px 40px;
-    box-shadow: 0 8px 60px rgba(106,61,232,0.25); backdrop-filter: blur(12px);
-}
+    box-shadow: 0 8px 60px rgba(106,61,232,0.25); backdrop-filter: blur(12px); }
 .login-logo { text-align:center; font-size:52px; margin-bottom:8px; }
-.login-title {
-    text-align:center; font-size:26px; font-weight:700;
+.login-title { text-align:center; font-size:26px; font-weight:700;
     background: linear-gradient(90deg, #e2c4f0, #9b8dff, #64b5f6);
-    -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom:4px;
-}
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom:4px; }
 .login-sub { text-align:center; font-size:13px; color:#6b7280; margin-bottom:32px; }
-
-/* CARDS */
-.total-card {
-    background: linear-gradient(135deg, #6a3de8 0%, #9b8dff 100%);
+.total-card { background: linear-gradient(135deg, #6a3de8 0%, #9b8dff 100%);
     border-radius: 20px; padding: 32px 40px;
     box-shadow: 0 8px 40px rgba(106,61,232,0.45); margin-bottom: 32px;
-    display: flex; align-items: center; justify-content: space-between;
-}
+    display: flex; align-items: center; justify-content: space-between; }
 .total-label { font-size:13px; font-weight:600; letter-spacing:2px; text-transform:uppercase; color:rgba(255,255,255,0.75); margin-bottom:6px; }
 .total-value { font-family:'JetBrains Mono',monospace; font-size:42px; font-weight:700; color:#fff; letter-spacing:-1px; }
 .total-icon  { font-size:56px; opacity:0.5; }
-.parcela-card {
-    background: linear-gradient(135deg, #1e3a5f 0%, #0d2137 100%);
+.parcela-card { background: linear-gradient(135deg, #1e3a5f 0%, #0d2137 100%);
     border: 1px solid rgba(100,181,246,0.25); border-radius: 20px; padding: 24px 32px;
     box-shadow: 0 4px 20px rgba(0,0,0,0.3); margin-bottom: 32px;
-    display: flex; align-items: center; justify-content: space-between;
-}
+    display: flex; align-items: center; justify-content: space-between; }
 .parcela-label { font-size:13px; font-weight:600; letter-spacing:2px; text-transform:uppercase; color:rgba(100,181,246,0.75); margin-bottom:6px; }
 .parcela-value { font-family:'JetBrains Mono',monospace; font-size:34px; font-weight:700; color:#64b5f6; }
-.salario-card {
-    background: linear-gradient(135deg, #1a2e1e 0%, #0d2118 100%);
+.salario-card { background: linear-gradient(135deg, #1a2e1e 0%, #0d2118 100%);
     border: 1px solid rgba(52,211,153,0.25); border-radius: 20px; padding: 24px 32px; margin-bottom: 32px;
     display: flex; align-items: center; justify-content: space-between;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-}
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
 .salario-card.alerta { background: linear-gradient(135deg, #2e1a1a 0%, #210d0d 100%); border-color: rgba(239,68,68,0.35); }
 .salario-label { font-size:13px; font-weight:600; letter-spacing:2px; text-transform:uppercase; color:rgba(52,211,153,0.75); margin-bottom:6px; }
 .salario-card.alerta .salario-label { color:rgba(239,68,68,0.75); }
 .salario-value { font-family:'JetBrains Mono',monospace; font-size:34px; font-weight:700; color:#34d399; }
 .salario-card.alerta .salario-value { color:#ef4444; }
-
-/* ALERTA SIMULAÇÃO PISCANTE */
 @keyframes pulse-alerta {
     0%,100% { box-shadow: 0 0 0 1px rgba(239,68,68,0.5), 0 0 20px rgba(239,68,68,0.2); opacity:1; }
-    50%      { box-shadow: 0 0 0 2px rgba(239,68,68,0.8), 0 0 40px rgba(239,68,68,0.4); opacity:0.88; }
-}
-.alerta-simulacao {
-    background: linear-gradient(135deg, rgba(239,68,68,0.15), rgba(251,146,60,0.1));
+    50%      { box-shadow: 0 0 0 2px rgba(239,68,68,0.8), 0 0 40px rgba(239,68,68,0.4); opacity:0.88; } }
+.alerta-simulacao { background: linear-gradient(135deg, rgba(239,68,68,0.15), rgba(251,146,60,0.1));
     border: 2px solid rgba(239,68,68,0.6); border-radius: 14px; padding: 18px 22px;
     font-size: 13px; font-weight: 700; color: #fca5a5; letter-spacing: 0.03em; line-height: 1.6;
-    animation: pulse-alerta 1.8s ease-in-out infinite; margin-top: 12px;
-}
-.alerta-simulacao .pct-destaque {
-    font-size: 24px; font-weight: 800; color: #ef4444;
-    display: block; margin-bottom: 8px; font-family: 'JetBrains Mono', monospace;
-}
-
-/* FORMULÁRIO */
-.form-section {
-    background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.09);
-    border-radius: 20px; padding: 28px 32px; margin-bottom: 32px; backdrop-filter: blur(10px);
-}
-
-/* LINHAS TABELA */
-.lancamento-row {
-    background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 14px; padding: 18px 24px; margin-bottom: 10px;
-    display: grid; grid-template-columns: 2.2fr 1fr 1fr 1fr 0.8fr;
-    align-items: center; transition: all 0.2s;
-}
-.lancamento-row:hover { background: rgba(155,141,255,0.08); border-color: rgba(155,141,255,0.3); }
-.lancamento-row.fixa  { border-color: rgba(251,191,36,0.25); }
-.lancamento-row.fixa:hover { background: rgba(251,191,36,0.06); border-color: rgba(251,191,36,0.45); }
-.lancamento-row.urgente {
-    border-color: rgba(239,68,68,0.7); background: rgba(239,68,68,0.08);
-    box-shadow: 0 0 0 1px rgba(239,68,68,0.3), -4px 0 0 0 #ef4444;
-}
-.lancamento-row.urgente:hover { background: rgba(239,68,68,0.13); }
-.lancamento-row.hoje {
-    border-color: rgba(251,146,60,0.8); background: rgba(251,146,60,0.09);
-    box-shadow: 0 0 0 1px rgba(251,146,60,0.35), -4px 0 0 0 #f97316;
-    animation: pulse-hoje 2s ease-in-out infinite;
-}
-.lancamento-row.hoje:hover { background: rgba(251,146,60,0.15); }
-@keyframes pulse-hoje {
-    0%,100% { box-shadow: 0 0 0 1px rgba(251,146,60,0.35), -4px 0 0 0 #f97316; }
-    50%      { box-shadow: 0 0 14px rgba(251,146,60,0.35), -4px 0 0 0 #f97316; }
-}
-.lancamento-row.em-breve {
-    border-color: rgba(234,179,8,0.55); background: rgba(234,179,8,0.06); box-shadow: -4px 0 0 0 #ca8a04;
-}
-.lancamento-row.em-breve:hover { background: rgba(234,179,8,0.1); }
-.lancamento-row.pago { opacity: 0.38; }
-
-.alerta-banner {
-    display:flex; align-items:center; gap:8px; background: rgba(239,68,68,0.12);
+    animation: pulse-alerta 1.8s ease-in-out infinite; margin-top: 12px; }
+.alerta-simulacao .pct-destaque { font-size: 24px; font-weight: 800; color: #ef4444;
+    display: block; margin-bottom: 8px; font-family: 'JetBrains Mono', monospace; }
+.form-section { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.09);
+    border-radius: 20px; padding: 28px 32px; margin-bottom: 32px; backdrop-filter: blur(10px); }
+.alerta-banner { display:flex; align-items:center; gap:8px; background: rgba(239,68,68,0.12);
     border: 1px solid rgba(239,68,68,0.3); border-radius: 10px; padding: 7px 14px;
-    font-size:11px; font-weight:700; color:#fca5a5; letter-spacing:0.04em; margin-bottom: 20px;
-}
+    font-size:11px; font-weight:700; color:#fca5a5; letter-spacing:0.04em; margin-bottom: 20px; }
 .alerta-banner .count { background: #ef4444; color:#fff; border-radius: 999px; padding: 1px 8px; font-size:11px; font-weight:800; }
-.hoje-banner {
-    display:flex; align-items:center; gap:8px; background: rgba(251,146,60,0.12);
+.hoje-banner { display:flex; align-items:center; gap:8px; background: rgba(251,146,60,0.12);
     border: 1px solid rgba(251,146,60,0.35); border-radius: 10px; padding: 7px 14px;
-    font-size:11px; font-weight:700; color:#fdba74; letter-spacing:0.04em; margin-bottom: 8px;
-}
-.badge-em-breve { background:rgba(234,179,8,0.15); border:1px solid rgba(234,179,8,0.4); color:#fde047; border-radius:999px; padding:4px 12px; font-size:12px; font-weight:700; font-family:'JetBrains Mono',monospace; display:inline-block; }
-
-/* INPUTS */
+    font-size:11px; font-weight:700; color:#fdba74; letter-spacing:0.04em; margin-bottom: 8px; }
 label { color:#a0aec0 !important; font-size:13px !important; font-weight:600 !important; letter-spacing:0.5px !important; }
-input, textarea, .stTextInput input, .stNumberInput input, .stDateInput input,
-[data-baseweb="input"] input, [data-baseweb="textarea"] textarea,
-div[data-testid="stTextInput"] input, div[data-testid="stNumberInput"] input, div[data-testid="stDateInput"] input {
-    border-radius: 10px !important; color: #1a1a2e !important;
-    font-family: 'Sora', sans-serif !important; font-size: 15px !important; caret-color: #6a3de8 !important;
-}
-input::placeholder, textarea::placeholder { color: rgba(80,80,120,0.5) !important; }
 .stCheckbox label { color:#c9d1f0 !important; font-size:14px !important; font-weight:600 !important; }
-
-/* BOTÕES */
-.stButton > button {
-    background: linear-gradient(135deg, #6a3de8, #9b8dff) !important;
+.stButton > button { background: linear-gradient(135deg, #6a3de8, #9b8dff) !important;
     color: white !important; border: none !important; border-radius: 12px !important;
     font-family: 'Sora', sans-serif !important; font-weight: 600 !important; font-size: 14px !important;
     padding: 12px 28px !important; width: 100% !important;
-    letter-spacing: 0.5px !important; box-shadow: 0 4px 20px rgba(106,61,232,0.4) !important; transition: all 0.2s !important;
-}
+    letter-spacing: 0.5px !important; box-shadow: 0 4px 20px rgba(106,61,232,0.4) !important; transition: all 0.2s !important; }
 .stButton > button:hover { transform: translateY(-2px) !important; box-shadow: 0 8px 30px rgba(106,61,232,0.6) !important; }
-.btn-link > button {
-    background: transparent !important; border: none !important; color: #9b8dff !important; font-size: 13px !important;
-    padding: 4px 0 !important; box-shadow: none !important; width: auto !important;
-    text-decoration: underline !important; text-underline-offset: 3px !important; opacity: 0.85 !important;
-}
+.btn-link > button { background: transparent !important; border: none !important; color: #9b8dff !important;
+    font-size: 13px !important; padding: 4px 0 !important; box-shadow: none !important; width: auto !important;
+    text-decoration: underline !important; text-underline-offset: 3px !important; opacity: 0.85 !important; }
 .btn-link > button:hover { opacity: 1 !important; transform: none !important; box-shadow: none !important; }
-.logout-btn > button {
-    background: rgba(255,255,255,0.06) !important; border: 1px solid rgba(255,255,255,0.12) !important;
+.logout-btn > button { background: rgba(255,255,255,0.06) !important; border: 1px solid rgba(255,255,255,0.12) !important;
     font-size: 12px !important; padding: 6px 14px !important; box-shadow: none !important;
-    width: auto !important; color: #9ca3af !important;
-}
+    width: auto !important; color: #9ca3af !important; }
 .logout-btn > button:hover { background: rgba(255,80,80,0.12) !important; color: #fca5a5 !important; border-color: rgba(255,80,80,0.3) !important; }
-.pref-btn > button {
-    background: rgba(155,141,255,0.1) !important; border: 1px solid rgba(155,141,255,0.3) !important;
+.pref-btn > button { background: rgba(155,141,255,0.1) !important; border: 1px solid rgba(155,141,255,0.3) !important;
     color: #c4b5fd !important; font-size: 18px !important; padding: 6px 12px !important;
-    border-radius: 10px !important; box-shadow: none !important; width: auto !important; transition: all 0.2s !important;
-}
-.pref-btn > button:hover {
-    background: rgba(155,141,255,0.22) !important; border-color: rgba(155,141,255,0.6) !important;
-    transform: rotate(30deg) !important; box-shadow: 0 0 12px rgba(155,141,255,0.3) !important;
-}
-.btn-pagar > button {
-    background: linear-gradient(135deg, #059669, #34d399) !important;
+    border-radius: 10px !important; box-shadow: none !important; width: auto !important; transition: all 0.2s !important; }
+.pref-btn > button:hover { background: rgba(155,141,255,0.22) !important; border-color: rgba(155,141,255,0.6) !important;
+    transform: rotate(30deg) !important; box-shadow: 0 0 12px rgba(155,141,255,0.3) !important; }
+.btn-pagar > button { background: linear-gradient(135deg, #059669, #34d399) !important;
     font-size: 11px !important; padding: 6px 10px !important;
-    box-shadow: 0 2px 10px rgba(5,150,105,0.3) !important; width: 100% !important;
-}
-.btn-quitar > button {
-    background: linear-gradient(135deg, #7c3aed, #a78bfa) !important;
+    box-shadow: 0 2px 10px rgba(5,150,105,0.3) !important; width: 100% !important; }
+.btn-quitar > button { background: linear-gradient(135deg, #7c3aed, #a78bfa) !important;
     font-size: 11px !important; padding: 6px 10px !important;
-    box-shadow: 0 2px 10px rgba(124,58,237,0.3) !important; width: 100% !important;
-}
-
-/* PAINEL PREFERÊNCIAS */
-.pref-panel {
-    background: rgba(26,26,46,0.97); border: 1px solid rgba(155,141,255,0.25);
+    box-shadow: 0 2px 10px rgba(124,58,237,0.3) !important; width: 100% !important; }
+.pref-panel { background: rgba(26,26,46,0.97); border: 1px solid rgba(155,141,255,0.25);
     border-radius: 16px; padding: 20px 24px; margin-bottom: 20px;
     backdrop-filter: blur(14px); box-shadow: 0 8px 40px rgba(106,61,232,0.25);
-    animation: fadeInDown 0.18s ease;
-}
-@keyframes fadeInDown {
-    from { opacity:0; transform:translateY(-8px); }
-    to   { opacity:1; transform:translateY(0); }
-}
-
-/* BADGES */
+    animation: fadeInDown 0.18s ease; }
+@keyframes fadeInDown { from { opacity:0; transform:translateY(-8px); } to { opacity:1; transform:translateY(0); } }
 .badge-parcelas { background:rgba(106,61,232,0.25); border:1px solid rgba(155,141,255,0.4); color:#c4b5fd; border-radius:999px; padding:4px 12px; font-size:12px; font-weight:600; font-family:'JetBrains Mono',monospace; display:inline-block; }
 .badge-vence    { background:rgba(100,181,246,0.15); border:1px solid rgba(100,181,246,0.35); color:#90cdf4; border-radius:999px; padding:4px 12px; font-size:12px; font-weight:600; font-family:'JetBrains Mono',monospace; display:inline-block; }
 .badge-fixa     { background:rgba(251,191,36,0.15); border:1px solid rgba(251,191,36,0.4); color:#fbbf24; border-radius:999px; padding:4px 12px; font-size:12px; font-weight:600; font-family:'JetBrains Mono',monospace; display:inline-block; }
 .badge-urgente  { background:rgba(239,68,68,0.2); border:1px solid rgba(239,68,68,0.5); color:#fca5a5; border-radius:999px; padding:4px 12px; font-size:12px; font-weight:700; font-family:'JetBrains Mono',monospace; display:inline-block; }
 .badge-hoje     { background:rgba(251,146,60,0.2); border:1px solid rgba(251,146,60,0.5); color:#fdba74; border-radius:999px; padding:4px 12px; font-size:12px; font-weight:700; font-family:'JetBrains Mono',monospace; display:inline-block; }
+.badge-em-breve { background:rgba(234,179,8,0.15); border:1px solid rgba(234,179,8,0.4); color:#fde047; border-radius:999px; padding:4px 12px; font-size:12px; font-weight:700; font-family:'JetBrains Mono',monospace; display:inline-block; }
 .badge-pago     { background:rgba(52,211,153,0.1); border:1px solid rgba(52,211,153,0.4); color:#6ee7b7; border-radius:999px; padding:4px 12px; font-size:12px; font-weight:600; font-family:'JetBrains Mono',monospace; display:inline-block; }
-
+.blq { max-width:560px; margin:60px auto 0; background:rgba(255,255,255,0.03);
+    border:1px solid rgba(239,68,68,0.25); border-radius:24px; padding:48px 40px;
+    box-shadow:0 8px 60px rgba(239,68,68,0.12); backdrop-filter:blur(14px);
+    text-align:center; animation:blqIn .4s ease; }
+@keyframes blqIn { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
+.blq-titulo { font-size:28px; font-weight:800;
+    background:linear-gradient(90deg,#ef4444,#fca5a5);
+    -webkit-background-clip:text; -webkit-text-fill-color:transparent; margin-bottom:10px; }
+.blq-sub { color:#9ca3af; font-size:15px; margin-bottom:28px; line-height:1.65; }
+.blq-badge { display:inline-block; background:rgba(106,61,232,0.16);
+    border:1px solid rgba(155,141,255,0.4); border-radius:999px;
+    padding:7px 22px; color:#c4b5fd; font-size:13px; font-weight:700; margin-bottom:24px; }
+.blq-features { text-align:left; margin:0 auto 24px; max-width:320px;
+    color:#9ca3af; font-size:14px; list-style:none; padding:0; }
+.blq-features li { padding:5px 0; }
+.blq-features li::before { content:"✅ "; }
+.blq-btn { display:block; background:linear-gradient(135deg,#6a3de8,#9b8dff);
+    color:#fff!important; text-decoration:none!important; border-radius:14px;
+    padding:18px 32px; font-size:17px; font-weight:700; letter-spacing:.5px;
+    box-shadow:0 4px 24px rgba(106,61,232,.45);
+    transition:transform .2s,box-shadow .2s; margin-bottom:14px; }
+.blq-btn:hover { transform:translateY(-2px); box-shadow:0 8px 36px rgba(106,61,232,.6); }
+.blq-wa { display:inline-flex; align-items:center; gap:8px;
+    color:#34d399!important; text-decoration:none!important;
+    font-size:14px; font-weight:600; opacity:.85; }
+.blq-wa:hover { opacity:1; }
 hr { border-color:rgba(255,255,255,0.07) !important; margin:28px 0 !important; }
 #MainMenu, footer, header { visibility: hidden; }
 .block-container { padding-top: 2rem; padding-bottom: 2rem; max-width: 1100px; }
@@ -715,9 +479,9 @@ hr { border-color:rgba(255,255,255,0.07) !important; margin:28px 0 !important; }
 </style>
 """, unsafe_allow_html=True)
 
-# ─────────────────────────────────────────────
-#  CONNECTION POOL
-# ─────────────────────────────────────────────
+# ═════════════════════════════════════════════
+#  CONNECTION POOL + run_query
+# ═════════════════════════════════════════════
 @st.cache_resource
 def get_pool():
     cfg = st.secrets["postgres"]
@@ -727,6 +491,7 @@ def get_pool():
         password=cfg["password"], port=cfg.get("port", 5432),
         sslmode="require", connect_timeout=10,
     )
+
 def run_query(sql: str, params=None, fetch=False):
     pool = get_pool()
     conn = pool.getconn()
@@ -757,50 +522,129 @@ def run_query(sql: str, params=None, fetch=False):
         try: pool.putconn(conn)
         except: pass
 
-# ── BLINDAGEM OAUTH CORRIGIDA (SEM ERRO DE EMAIL) ────────────────────────────
-_q_params = st.query_params
+# ═════════════════════════════════════════════
+#  GOOGLE OAUTH — funções (definidas APÓS run_query)
+# ═════════════════════════════════════════════
+def google_auth_url(state: str) -> str:
+    try:
+        cfg = st.secrets["google_oauth"]
+        p = {
+            "client_id":     cfg["client_id"],
+            "redirect_uri":  cfg["redirect_uri"],
+            "response_type": "code",
+            "scope":         "openid email profile",
+            "access_type":   "offline",
+            "state":         state,
+            "prompt":        "select_account",
+        }
+        return f"{GOOGLE_AUTH_URL}?{urlencode(p)}"
+    except Exception:
+        return ""
 
-if "code" in _q_params:
-    _code = _q_params["code"]
-    
-    # Limpa a URL na hora para matar loops
-    st.query_params.clear()
-    
+def google_exchange_code(code: str) -> dict | None:
+    try:
+        cfg = st.secrets["google_oauth"]
+        tok = requests.post(GOOGLE_TOKEN_URL, data={
+            "code":          code,
+            "client_id":     cfg["client_id"],
+            "client_secret": cfg["client_secret"],
+            "redirect_uri":  cfg["redirect_uri"],
+            "grant_type":    "authorization_code",
+        }, timeout=10)
+        tok.raise_for_status()
+        info = requests.get(GOOGLE_INFO_URL, headers={
+            "Authorization": f"Bearer {tok.json()['access_token']}"
+        }, timeout=10)
+        info.raise_for_status()
+        u = info.json()
+        return {
+            "provider_id": u.get("sub", ""),
+            "email":       u.get("email", "").lower().strip(),
+            "nome":        u.get("name") or u.get("given_name") or "Usuário Google",
+            "avatar_url":  u.get("picture", ""),
+        }
+    except Exception as e:
+        st.error(f"❌ Erro Google OAuth: {e}"); return None
+
+def upsert_usuario_google(dados: dict) -> tuple[int, str] | None:
+    """
+    Cria ou localiza o usuário Google no banco.
+    Recebe o dict direto (sem run_query_fn como parâmetro) pois run_query
+    já está definida no escopo global neste ponto do arquivo.
+    Ordem: provider_id → e-mail existente → cria novo em trial.
+    """
+    email = dados["email"]
+    pid   = dados["provider_id"]
+    nome  = dados["nome"]
+    av    = dados["avatar_url"]
+    try:
+        # 1. busca pelo ID único do Google
+        rows = run_query(
+            "SELECT id,nome FROM usuarios WHERE provedor='google' AND provider_id=%s",
+            (pid,), fetch=True)
+        if rows:
+            return rows[0]["id"], rows[0]["nome"]
+
+        # 2. busca por e-mail (conta manual pré-existente) → vincula
+        rows = run_query("SELECT id,nome FROM usuarios WHERE email=%s", (email,), fetch=True)
+        if rows:
+            run_query(
+                "UPDATE usuarios SET provedor='google', provider_id=%s, avatar_url=%s WHERE id=%s",
+                (pid, av, rows[0]["id"]))
+            return rows[0]["id"], rows[0]["nome"]
+
+        # 3. cria conta nova diretamente em trial
+        run_query("""
+            INSERT INTO usuarios
+              (nome, email, senha, telefone, provedor, provider_id, avatar_url,
+               status_assinatura, trial_inicio, salario)
+            VALUES (%s, %s, '', '', 'google', %s, %s, 'trial', NOW(), 0)
+        """, (nome, email, pid, av))
+        rows = run_query("SELECT id FROM usuarios WHERE email=%s", (email,), fetch=True)
+        if rows:
+            _expira = date.today() + timedelta(days=TRIAL_DIAS)
+            try:
+                run_query("""
+                    INSERT INTO licencas_ativas (email, tipo_licenca, expira_em)
+                    VALUES (%s, 'trial', %s)
+                    ON CONFLICT (email) DO NOTHING
+                """, (email, _expira))
+            except Exception:
+                pass
+            return rows[0]["id"], nome
+    except Exception as e:
+        st.error(f"❌ Erro ao registrar usuário Google: {e}")
+    return None
+
+# ═════════════════════════════════════════════
+#  CALLBACK DO GOOGLE — intercepta AQUI (run_query já existe)
+# ═════════════════════════════════════════════
+if st.session_state.usuario_id is None and "code" in st.query_params:
+    _code = st.query_params["code"]
+    st.query_params.clear()   # limpa URL imediatamente para evitar loop
     with st.spinner("Conectando sua conta Google..."):
         try:
-            # 1. Pega os dados do perfil do usuário no Google
-            dados_usuario = google_exchange_code(_code)
-            
-            if dados_usuario and isinstance(dados_usuario, dict) and "email" in dados_usuario:
-                
-                # 🚀 AGORA SIM! Passa a run_query e o dicionário completo 'dados_usuario'
-                retorno_banco = upsert_usuario_oauth(run_query, dados_usuario)
-                
-                if retorno_banco:
-                    usuario_id, usuario_nome = retorno_banco
-                    
-                    # Salva os dados na sessão global do Streamlit
-                    st.session_state.usuario_id = usuario_id
-                    st.session_state.usuario_email = dados_usuario["email"]
-                    st.session_state.usuario_nome = usuario_nome
-                    
-                    # Entra na Dashboard logado com sucesso!
+            _dados = google_exchange_code(_code)
+            if _dados and "email" in _dados:
+                _retorno = upsert_usuario_google(_dados)
+                if _retorno:
+                    st.session_state.usuario_id   = _retorno[0]
+                    st.session_state.usuario_nome = _retorno[1]
                     st.rerun()
                 else:
-                    st.error("Erro ao registrar ou localizar sua conta no banco de dados.")
+                    st.error("❌ Não foi possível registrar sua conta. Tente novamente.")
             else:
-                st.error("Não foi possível recuperar seus dados do Google. Tente novamente.")
-                
-        except Exception as e:
-            st.error(f"Erro crítico na autenticação: {e}")
-# ─────────────────────────────────────────────────────────────────────────────
+                st.error("❌ Não foi possível obter seus dados do Google. Tente novamente.")
+        except Exception as _e:
+            st.error(f"❌ Erro crítico na autenticação Google: {_e}")
 
-# ─────────────────────────────────────────────
+# ═════════════════════════════════════════════
 #  INIT DB
-# ─────────────────────────────────────────────
+# ═════════════════════════════════════════════
 def init_db():
     run_query("""CREATE TABLE IF NOT EXISTS usuarios (
-        id SERIAL PRIMARY KEY, nome TEXT NOT NULL, email TEXT NOT NULL UNIQUE, senha TEXT NOT NULL)""")
+        id SERIAL PRIMARY KEY, nome TEXT NOT NULL, email TEXT NOT NULL UNIQUE,
+        senha TEXT NOT NULL DEFAULT '')""")
     run_query("""CREATE TABLE IF NOT EXISTS licencas_ativas (
         id SERIAL PRIMARY KEY, email TEXT NOT NULL UNIQUE, tipo_licenca TEXT NOT NULL,
         expira_em DATE, criado_em TIMESTAMP NOT NULL DEFAULT NOW())""")
@@ -815,55 +659,33 @@ def init_db():
     run_query("""CREATE TABLE IF NOT EXISTS reset_tokens (
         id SERIAL PRIMARY KEY, email TEXT NOT NULL, token TEXT NOT NULL UNIQUE,
         criado_em TIMESTAMP NOT NULL DEFAULT NOW(), usado BOOLEAN NOT NULL DEFAULT FALSE)""")
+    # colunas opcionais em lancamentos
     for col, defn in [
-        ("recorrente","SMALLINT NOT NULL DEFAULT 0"), ("usuario_id","INTEGER NOT NULL DEFAULT 0"),
-        ("pago","BOOLEAN NOT NULL DEFAULT FALSE"),    ("parcelas_pagas","INTEGER NOT NULL DEFAULT 0"),
-    ]:
-        run_query(f"""DO $$ BEGIN IF NOT EXISTS (
-            SELECT 1 FROM information_schema.columns WHERE table_name='lancamentos' AND column_name='{col}'
-        ) THEN ALTER TABLE lancamentos ADD COLUMN {col} {defn}; END IF; END$$""")
-    run_query("""DO $$ BEGIN IF NOT EXISTS (
-        SELECT 1 FROM information_schema.columns WHERE table_name='usuarios' AND column_name='telefone'
-    ) THEN ALTER TABLE usuarios ADD COLUMN telefone TEXT DEFAULT ''; END IF; END$$""")
-    # MISSÃO 1: garante que a coluna salario existe na tabela usuarios
-    run_query("""DO $$ BEGIN IF NOT EXISTS (
-        SELECT 1 FROM information_schema.columns WHERE table_name='usuarios' AND column_name='salario'
-    ) THEN ALTER TABLE usuarios ADD COLUMN salario NUMERIC(12,2) NOT NULL DEFAULT 0; END IF; END$$""")
-    # ── Colunas de Trial e Google OAuth ──
-    for _col, _def in [
-        ("provedor",            "TEXT NOT NULL DEFAULT 'email'"),
-        ("provider_id",         "TEXT NOT NULL DEFAULT ''"),
-        ("avatar_url",          "TEXT NOT NULL DEFAULT ''"),
-        ("status_assinatura",   "TEXT NOT NULL DEFAULT 'trial'"),
-        ("trial_inicio",        "TIMESTAMP NOT NULL DEFAULT NOW()"),
-        ("aviso_d1_enviado",    "BOOLEAN NOT NULL DEFAULT FALSE"),
-        ("aviso_d0_enviado",    "BOOLEAN NOT NULL DEFAULT FALSE"),
+        ("recorrente",    "SMALLINT NOT NULL DEFAULT 0"),
+        ("usuario_id",    "INTEGER NOT NULL DEFAULT 0"),
+        ("pago",          "BOOLEAN NOT NULL DEFAULT FALSE"),
+        ("parcelas_pagas","INTEGER NOT NULL DEFAULT 0"),
     ]:
         run_query(f"""DO $$ BEGIN IF NOT EXISTS (
             SELECT 1 FROM information_schema.columns
-            WHERE table_name='usuarios' AND column_name='{_col}'
-        ) THEN ALTER TABLE usuarios ADD COLUMN {_col} {_def}; END IF; END$$""")
-                 # Cole ao final de init_db(), antes do @st.cache_resource:
-
-    # ── Colunas de OAuth e Trial ──
+            WHERE table_name='lancamentos' AND column_name='{col}'
+        ) THEN ALTER TABLE lancamentos ADD COLUMN {col} {defn}; END IF; END$$""")
+    # colunas de usuários
     for col, defn in [
-        ("provedor",              "TEXT DEFAULT 'email'"),
-        ("provider_id",           "TEXT DEFAULT ''"),
-        ("avatar_url",            "TEXT DEFAULT ''"),
-        ("status_assinatura",     "TEXT NOT NULL DEFAULT 'trial'"),
-        ("trial_inicio",          "TIMESTAMP NOT NULL DEFAULT NOW()"),
-        ("trial_aviso_enviado",   "BOOLEAN NOT NULL DEFAULT FALSE"),
-        ("trial_expirou_email",   "BOOLEAN NOT NULL DEFAULT FALSE"),
+        ("telefone",          "TEXT DEFAULT ''"),
+        ("salario",           "NUMERIC(12,2) NOT NULL DEFAULT 0"),
+        ("provedor",          "TEXT NOT NULL DEFAULT 'email'"),
+        ("provider_id",       "TEXT NOT NULL DEFAULT ''"),
+        ("avatar_url",        "TEXT NOT NULL DEFAULT ''"),
+        ("status_assinatura", "TEXT NOT NULL DEFAULT 'trial'"),
+        ("trial_inicio",      "TIMESTAMP NOT NULL DEFAULT NOW()"),
+        ("aviso_d1_enviado",  "BOOLEAN NOT NULL DEFAULT FALSE"),
+        ("aviso_d0_enviado",  "BOOLEAN NOT NULL DEFAULT FALSE"),
     ]:
         run_query(f"""DO $$ BEGIN IF NOT EXISTS (
             SELECT 1 FROM information_schema.columns
             WHERE table_name='usuarios' AND column_name='{col}'
         ) THEN ALTER TABLE usuarios ADD COLUMN {col} {defn}; END IF; END$$""")
-
-    # Índice OAuth
-    run_query("""CREATE UNIQUE INDEX IF NOT EXISTS idx_usuarios_provider
-        ON usuarios(provedor, provider_id)
-        WHERE provider_id IS NOT NULL AND provider_id <> ''""")
 
 @st.cache_resource
 def init_db_once():
@@ -875,9 +697,9 @@ except Exception as e:
     st.error(f"❌ Erro ao conectar ao banco: {e}")
     st.stop()
 
-# ─────────────────────────────────────────────
+# ═════════════════════════════════════════════
 #  HELPERS
-# ─────────────────────────────────────────────
+# ═════════════════════════════════════════════
 def hash_senha(s): return hashlib.sha256(s.encode()).hexdigest()
 def email_valido(e): return bool(re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", e))
 def telefone_valido(tel): d = re.sub(r'\D','',tel); return 10 <= len(d) <= 13
@@ -903,9 +725,9 @@ def validar_token_sessao(token):
     except: pass
     return None
 
-# ─────────────────────────────────────────────
-#  PAYWALL
-# ─────────────────────────────────────────────
+# ═════════════════════════════════════════════
+#  PAYWALL (licenças manuais)
+# ═════════════════════════════════════════════
 @st.cache_data(ttl=300, show_spinner=False)
 def verificar_status_licenca(email):
     try:
@@ -913,15 +735,15 @@ def verificar_status_licenca(email):
         if not rows: return False, "não_autorizado"
         l = rows[0]
         if l["tipo_licenca"] == "vitalicio": return True, "vitalicio"
-        if l["tipo_licenca"] == "assinatura":
+        if l["tipo_licenca"] in ("assinatura", "trial"):
             if l["expira_em"] is None: return True, "assinatura_valida"
             return (True,"assinatura_valida") if to_date(l["expira_em"]) >= date.today() else (False,"assinatura_expirada")
         return False, "invalido"
     except: return False, "erro"
 
-# ─────────────────────────────────────────────
+# ═════════════════════════════════════════════
 #  RESET DE SENHA
-# ─────────────────────────────────────────────
+# ═════════════════════════════════════════════
 def gerar_token_reset(email):
     try:
         run_query("UPDATE reset_tokens SET usado=TRUE WHERE email=%s AND usado=FALSE", (email.strip().lower(),))
@@ -959,11 +781,11 @@ def enviar_email_reset(destinatario, token):
         msg["Subject"] = "🔐 Gastei — Código de Redefinição de Senha"
         msg["From"] = cfg["remetente"]; msg["To"] = destinatario
         html = f"""<div style="font-family:Sora,sans-serif;max-width:480px;margin:auto;background:#1a1a2e;border-radius:16px;padding:40px;color:#e8e4ff;">
-            <div style="text-align:center;font-size:48px;margin-bottom:8px;">💳</div>
-            <h2 style="text-align:center;background:linear-gradient(90deg,#9b8dff,#64b5f6);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:24px;">Redefinição de Senha</h2>
-            <p style="color:#9ca3af;text-align:center;margin-bottom:32px;">Use o código abaixo. Ele expira em <strong style="color:#e8e4ff;">15 minutos</strong>.</p>
-            <div style="background:#6a3de8;border-radius:12px;padding:20px;text-align:center;letter-spacing:12px;font-size:36px;font-weight:700;color:#fff;font-family:'JetBrains Mono',monospace;margin-bottom:28px;">{token}</div>
-            <p style="color:#6b7280;font-size:12px;text-align:center;">Se não solicitou, ignore.<br>Suporte: suporte@finatec.com.br</p></div>"""
+            <div style="text-align:center;font-size:48px;">💳</div>
+            <h2 style="text-align:center;background:linear-gradient(90deg,#9b8dff,#64b5f6);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">Redefinição de Senha</h2>
+            <p style="color:#9ca3af;text-align:center;">Use o código abaixo. Ele expira em <strong style="color:#e8e4ff;">15 minutos</strong>.</p>
+            <div style="background:#6a3de8;border-radius:12px;padding:20px;text-align:center;letter-spacing:12px;font-size:36px;font-weight:700;color:#fff;font-family:'JetBrains Mono',monospace;margin:20px 0;">{token}</div>
+            <p style="color:#6b7280;font-size:12px;text-align:center;">Se não solicitou, ignore.</p></div>"""
         msg.attach(MIMEText(html, "html"))
         porta = int(cfg.get("smtp_port", 587))
         if porta == 465:
@@ -978,14 +800,18 @@ def enviar_email_reset(destinatario, token):
     except Exception as e:
         st.error(f"❌ Falha ao enviar e-mail: {e}"); return False
 
-# ─────────────────────────────────────────────
+# ═════════════════════════════════════════════
 #  USUÁRIOS
-# ─────────────────────────────────────────────
+# ═════════════════════════════════════════════
 def criar_usuario(nome, email, senha, telefone=""):
+    # Usuários manuais precisam de licença prévia na licencas_ativas
     ok, motivo = verificar_status_licenca(email)
     if not ok:
-        msgs = {"não_autorizado":t.get('não_autorizado', "Acesso Negado! Este e-mail não possui licença ativa."),
-                "assinatura_expirada":t.get('assinatura_expirada', "Assinatura expirada! Renove para reativar.")}
+        t_ = get_t()
+        msgs = {
+            "não_autorizado":   t_.get("não_autorizado", "Acesso Negado! Este e-mail não possui licença ativa."),
+            "assinatura_expirada": t_.get("assinatura_expirada", "Assinatura expirada! Renove para reativar."),
+        }
         return False, msgs.get(motivo, "Licença inválida.")
     try:
         run_query("INSERT INTO usuarios (nome,email,senha,telefone) VALUES (%s,%s,%s,%s)",
@@ -1005,13 +831,11 @@ def autenticar_usuario(email, senha):
         return (rows[0]["id"], rows[0]["nome"]) if rows else None
     except: return None
 
-# ─────────────────────────────────────────────
-#  MISSÃO 1 — SALÁRIO NO SUPABASE
-#  Funções dedicadas: buscar e atualizar
-# ─────────────────────────────────────────────
+# ═════════════════════════════════════════════
+#  SALÁRIO
+# ═════════════════════════════════════════════
 @st.cache_data(ttl=120, show_spinner=False)
 def buscar_salario_db(uid: int) -> float:
-    """Lê o salário do banco. Cacheado por 2 min para evitar roundtrips."""
     try:
         rows = run_query("SELECT salario FROM usuarios WHERE id=%s", (uid,), fetch=True)
         if rows and rows[0]["salario"] is not None:
@@ -1021,7 +845,6 @@ def buscar_salario_db(uid: int) -> float:
     return 0.0
 
 def salvar_salario_db(uid: int, valor: float) -> bool:
-    """Persiste o salário no Supabase. Chamado SOMENTE ao clicar no botão."""
     try:
         run_query("UPDATE usuarios SET salario=%s WHERE id=%s", (float(valor), uid))
         buscar_salario_db.clear()
@@ -1030,101 +853,11 @@ def salvar_salario_db(uid: int, valor: float) -> bool:
     except Exception as e:
         st.error(f"❌ Erro ao salvar salário: {e}"); return False
 
-# ─────────────────────────────────────────────
-#  GOOGLE OAUTH
-# ─────────────────────────────────────────────
-def google_auth_url(state: str) -> str:
-    try:
-        cfg = st.secrets["google_oauth"]
-        from urllib.parse import urlencode
-        p = {
-            "client_id":     cfg["client_id"],
-            "redirect_uri":  cfg["redirect_uri"],
-            "response_type": "code",
-            "scope":         "openid email profile",
-            "access_type":   "offline",
-            "state":         state,
-            "prompt":        "select_account",
-        }
-        return f"{GOOGLE_AUTH_URL}?{urlencode(p)}"
-    except Exception:
-        return ""
-
-def google_trocar_code(code: str) -> dict | None:
-    """Troca o authorization code pelos dados do usuário Google."""
-    try:
-        cfg = st.secrets["google_oauth"]
-        tok = requests.post(GOOGLE_TOKEN_URL, data={
-            "code":          code,
-            "client_id":     cfg["client_id"],
-            "client_secret": cfg["client_secret"],
-            "redirect_uri":  cfg["redirect_uri"],
-            "grant_type":    "authorization_code",
-        }, timeout=10)
-        tok.raise_for_status()
-        info = requests.get(GOOGLE_INFO_URL, headers={
-            "Authorization": f"Bearer {tok.json()['access_token']}"
-        }, timeout=10)
-        info.raise_for_status()
-        u = info.json()
-        return {
-            "provider_id": u.get("sub", ""),
-            "email":       u.get("email", "").lower().strip(),
-            "nome":        u.get("name") or u.get("given_name") or "Usuário Google",
-            "avatar_url":  u.get("picture", ""),
-        }
-    except Exception as e:
-        st.error(f"❌ Erro Google OAuth: {e}"); return None
-
-def upsert_usuario_google(dados: dict) -> tuple[int, str] | None:
-    """
-    Cria ou localiza o usuário Google no banco.
-    Ordem: provider_id → e-mail → cria novo em trial.
-    """
-    email = dados["email"]; pid = dados["provider_id"]
-    nome  = dados["nome"];  av  = dados["avatar_url"]
-    try:
-        # 1. busca pelo ID Google
-        rows = run_query("SELECT id,nome FROM usuarios WHERE provedor='google' AND provider_id=%s",
-                         (pid,), fetch=True)
-        if rows: return rows[0]["id"], rows[0]["nome"]
-
-        # 2. busca por e-mail (conta manual prévia) → vincula OAuth
-        rows = run_query("SELECT id,nome FROM usuarios WHERE email=%s", (email,), fetch=True)
-        if rows:
-            run_query("UPDATE usuarios SET provedor='google', provider_id=%s, avatar_url=%s WHERE id=%s",
-                      (pid, av, rows[0]["id"]))
-            return rows[0]["id"], rows[0]["nome"]
-
-        # 3. cria conta nova em trial
-        run_query("""INSERT INTO usuarios
-            (nome,email,senha,telefone,provedor,provider_id,avatar_url,
-             status_assinatura,trial_inicio,salario)
-            VALUES (%s,%s,'','','google',%s,%s,'trial',NOW(),0)""",
-            (nome, email, pid, av))
-        rows = run_query("SELECT id FROM usuarios WHERE email=%s", (email,), fetch=True)
-        if rows:
-            # registra na licencas_ativas para compatibilidade
-            _expira = date.today() + timedelta(days=TRIAL_DIAS)
-            try:
-                run_query("""INSERT INTO licencas_ativas (email,tipo_licenca,expira_em)
-                    VALUES (%s,'trial',%s) ON CONFLICT (email) DO NOTHING""",
-                    (email, _expira))
-            except Exception: pass
-            return rows[0]["id"], nome
-    except Exception as e:
-        st.error(f"❌ Erro ao registrar usuário Google: {e}")
-    return None
-
-# ─────────────────────────────────────────────
+# ═════════════════════════════════════════════
 #  MOTOR DE TRIAL
-# ─────────────────────────────────────────────
+# ═════════════════════════════════════════════
 @st.cache_data(ttl=60, show_spinner=False)
 def verificar_trial(usuario_id: int) -> dict:
-    """
-    Retorna dict com: acesso (bool), status (str), dias_restantes (int).
-    Cache de 60s para não bater no banco a cada clique.
-    """
     try:
         rows = run_query(
             "SELECT status_assinatura, trial_inicio FROM usuarios WHERE id=%s",
@@ -1148,72 +881,10 @@ def verificar_trial(usuario_id: int) -> dict:
         pass
     return {"acesso": False, "status": "erro", "dias_restantes": 0}
 
-def _job_emails_trial():
-    """
-    Envia e-mails de aviso (D-1) e bloqueio (D+0) para trials expirando.
-    É chamado com cache de 24h para rodar só uma vez por dia por instância.
-    """
-    hoje = date.today()
-    try:
-        cfg = st.secrets.get("email", {})
-        if not cfg: return
-
-        # D-1: aviso
-        amanha = hoje + timedelta(days=1)
-        rows = run_query(f"""
-            SELECT id,nome,email FROM usuarios
-            WHERE status_assinatura='trial' AND aviso_d1_enviado=FALSE
-              AND (trial_inicio::date + interval '{TRIAL_DIAS-1} days')::date = '{amanha}'
-        """, fetch=True)
-        for u in (rows or []):
-            html = f"""<div style="font-family:sans-serif;max-width:500px;margin:auto;
-                background:#1a1a2e;border-radius:16px;padding:36px;color:#e8e4ff;">
-              <div style="text-align:center;font-size:48px;">⏰</div>
-              <h2 style="text-align:center;color:#fbbf24;">Seu teste termina amanhã!</h2>
-              <p style="color:#9ca3af;text-align:center;">
-                Olá, <strong style="color:#fff;">{u['nome']}</strong>!
-                Não perca o controle das suas finanças.
-              </p>
-              <a href="{KIWIFY_URL}" style="display:block;background:linear-gradient(135deg,#6a3de8,#9b8dff);
-                 color:#fff;text-align:center;padding:16px;border-radius:12px;
-                 font-weight:700;font-size:15px;text-decoration:none;margin-top:24px;">
-                🔓 Assinar Gastei Premium — R$ 24,90/mês
-              </a></div>"""
-            _smtp_send(cfg, u["email"], "⏰ Seu teste grátis termina amanhã — Gastei", html)
-            run_query("UPDATE usuarios SET aviso_d1_enviado=TRUE WHERE id=%s", (u["id"],))
-
-        # D+0: expirado
-        rows = run_query(f"""
-            SELECT id,nome,email FROM usuarios
-            WHERE status_assinatura='trial' AND aviso_d0_enviado=FALSE
-              AND (trial_inicio::date + interval '{TRIAL_DIAS} days')::date <= '{hoje}'
-        """, fetch=True)
-        for u in (rows or []):
-            html = f"""<div style="font-family:sans-serif;max-width:500px;margin:auto;
-                background:#1a1a2e;border-radius:16px;padding:36px;color:#e8e4ff;">
-              <div style="text-align:center;font-size:48px;">🔒</div>
-              <h2 style="text-align:center;color:#ef4444;">Acesso suspenso</h2>
-              <p style="color:#9ca3af;text-align:center;">
-                Olá, <strong style="color:#fff;">{u['nome']}</strong>!
-                Seus {TRIAL_DIAS} dias gratuitos chegaram ao fim.
-                Seus dados estão salvos esperando por você.
-              </p>
-              <a href="{KIWIFY_URL}" style="display:block;background:linear-gradient(135deg,#6a3de8,#9b8dff);
-                 color:#fff;text-align:center;padding:16px;border-radius:12px;
-                 font-weight:700;font-size:15px;text-decoration:none;margin-top:24px;">
-                🚀 Reativar acesso — R$ 24,90/mês
-              </a></div>"""
-            _smtp_send(cfg, u["email"], "🔒 Seu acesso ao Gastei foi suspenso", html)
-            run_query("UPDATE usuarios SET aviso_d0_enviado=TRUE WHERE id=%s", (u["id"],))
-    except Exception:
-        pass   # job silencioso — nunca quebra a UI
-
-def _smtp_send(cfg: dict, dest: str, assunto: str, html: str):
+def _smtp_send(cfg, dest, assunto, html):
     try:
         msg = MIMEMultipart("alternative")
-        msg["Subject"] = assunto
-        msg["From"]    = cfg["remetente"]
-        msg["To"]      = dest
+        msg["Subject"] = assunto; msg["From"] = cfg["remetente"]; msg["To"] = dest
         msg.attach(MIMEText(html, "html"))
         porta = int(cfg.get("smtp_port", 587))
         if porta == 465:
@@ -1228,51 +899,52 @@ def _smtp_send(cfg: dict, dest: str, assunto: str, html: str):
                 s.sendmail(cfg["remetente"], dest, msg.as_string())
     except Exception: pass
 
+def _job_emails_trial():
+    hoje = date.today()
+    try:
+        cfg = st.secrets.get("email", {})
+        if not cfg: return
+        amanha = hoje + timedelta(days=1)
+        rows = run_query(f"""
+            SELECT id,nome,email FROM usuarios
+            WHERE status_assinatura='trial' AND aviso_d1_enviado=FALSE
+              AND (trial_inicio::date + interval '{TRIAL_DIAS-1} days')::date = '{amanha}'
+        """, fetch=True)
+        for u in (rows or []):
+            html = f"""<div style="font-family:sans-serif;max-width:500px;margin:auto;background:#1a1a2e;border-radius:16px;padding:36px;color:#e8e4ff;">
+              <div style="text-align:center;font-size:48px;">⏰</div>
+              <h2 style="text-align:center;color:#fbbf24;">Seu teste termina amanhã!</h2>
+              <p style="color:#9ca3af;text-align:center;">Olá, <strong style="color:#fff;">{u['nome']}</strong>! Não perca o controle das suas finanças.</p>
+              <a href="{KIWIFY_URL}" style="display:block;background:linear-gradient(135deg,#6a3de8,#9b8dff);color:#fff;text-align:center;padding:16px;border-radius:12px;font-weight:700;font-size:15px;text-decoration:none;margin-top:24px;">
+                🔓 Assinar Gastei Premium — R$ 24,90/mês</a></div>"""
+            _smtp_send(cfg, u["email"], "⏰ Seu teste grátis termina amanhã — Gastei", html)
+            run_query("UPDATE usuarios SET aviso_d1_enviado=TRUE WHERE id=%s", (u["id"],))
+        rows = run_query(f"""
+            SELECT id,nome,email FROM usuarios
+            WHERE status_assinatura='trial' AND aviso_d0_enviado=FALSE
+              AND (trial_inicio::date + interval '{TRIAL_DIAS} days')::date <= '{hoje}'
+        """, fetch=True)
+        for u in (rows or []):
+            html = f"""<div style="font-family:sans-serif;max-width:500px;margin:auto;background:#1a1a2e;border-radius:16px;padding:36px;color:#e8e4ff;">
+              <div style="text-align:center;font-size:48px;">🔒</div>
+              <h2 style="text-align:center;color:#ef4444;">Acesso suspenso</h2>
+              <p style="color:#9ca3af;text-align:center;">Olá, <strong style="color:#fff;">{u['nome']}</strong>! Seus {TRIAL_DIAS} dias gratuitos chegaram ao fim.</p>
+              <a href="{KIWIFY_URL}" style="display:block;background:linear-gradient(135deg,#6a3de8,#9b8dff);color:#fff;text-align:center;padding:16px;border-radius:12px;font-weight:700;font-size:15px;text-decoration:none;margin-top:24px;">
+                🚀 Reativar acesso — R$ 24,90/mês</a></div>"""
+            _smtp_send(cfg, u["email"], "🔒 Seu acesso ao Gastei foi suspenso", html)
+            run_query("UPDATE usuarios SET aviso_d0_enviado=TRUE WHERE id=%s", (u["id"],))
+    except Exception: pass
+
 @st.cache_data(ttl=86400, show_spinner=False)
 def _job_diario(_dummy: int):
-    """Wrapper cacheado para rodar _job_emails_trial apenas 1x por dia."""
     _job_emails_trial()
 
-# ─────────────────────────────────────────────
-#  TELA DE BLOQUEIO (trial expirado)
-# ─────────────────────────────────────────────
+# ═════════════════════════════════════════════
+#  TELA DE BLOQUEIO
+# ═════════════════════════════════════════════
 def renderizar_tela_bloqueio(nome: str = ""):
     link_wa = f"https://wa.me/{WA_SUPORTE}?text=Quero%20assinar%20o%20Gastei%20Premium"
     nome_d  = f", {nome}" if nome else ""
-    st.markdown("""
-    <style>
-    .blq {
-        max-width:560px;margin:60px auto 0;
-        background:rgba(255,255,255,0.03);
-        border:1px solid rgba(239,68,68,0.25);
-        border-radius:24px;padding:48px 40px;
-        box-shadow:0 8px 60px rgba(239,68,68,0.12);
-        backdrop-filter:blur(14px);text-align:center;
-        animation:blqIn .4s ease;
-    }
-    @keyframes blqIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
-    .blq-titulo{font-size:28px;font-weight:800;
-        background:linear-gradient(90deg,#ef4444,#fca5a5);
-        -webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:10px;}
-    .blq-sub{color:#9ca3af;font-size:15px;margin-bottom:28px;line-height:1.65;}
-    .blq-badge{display:inline-block;background:rgba(106,61,232,0.16);
-        border:1px solid rgba(155,141,255,0.4);border-radius:999px;
-        padding:7px 22px;color:#c4b5fd;font-size:13px;font-weight:700;margin-bottom:24px;}
-    .blq-features{text-align:left;margin:0 auto 24px;max-width:320px;
-        color:#9ca3af;font-size:14px;list-style:none;padding:0;}
-    .blq-features li{padding:5px 0;}
-    .blq-features li::before{content:"✅ ";}
-    .blq-btn{display:block;background:linear-gradient(135deg,#6a3de8,#9b8dff);
-        color:#fff!important;text-decoration:none!important;
-        border-radius:14px;padding:18px 32px;font-size:17px;font-weight:700;
-        letter-spacing:.5px;box-shadow:0 4px 24px rgba(106,61,232,.45);
-        transition:transform .2s,box-shadow .2s;margin-bottom:14px;}
-    .blq-btn:hover{transform:translateY(-2px);box-shadow:0 8px 36px rgba(106,61,232,.6);}
-    .blq-wa{display:inline-flex;align-items:center;gap:8px;
-        color:#34d399!important;text-decoration:none!important;
-        font-size:14px;font-weight:600;opacity:.85;}
-    .blq-wa:hover{opacity:1;}
-    </style>""", unsafe_allow_html=True)
     st.markdown(f"""
     <div class="blq">
       <div style="font-size:64px;margin-bottom:8px;">🔒</div>
@@ -1303,9 +975,9 @@ def renderizar_tela_bloqueio(nome: str = ""):
             for k in list(st.session_state.keys()): del st.session_state[k]
             st.query_params.clear(); st.rerun()
 
-# ─────────────────────────────────────────────
+# ═════════════════════════════════════════════
 #  LANÇAMENTOS
-# ─────────────────────────────────────────────
+# ═════════════════════════════════════════════
 def inserir_lancamento(uid, desc, valor, parcelas, inicio, final, recorrente):
     try:
         run_query("""INSERT INTO lancamentos
@@ -1315,7 +987,6 @@ def inserir_lancamento(uid, desc, valor, parcelas, inicio, final, recorrente):
         invalidar_cache_lancamentos()
     except Exception as e: st.error(f"❌ {e}")
 
-# MISSÃO 3 — cache com ttl=60 nas leituras do banco
 @st.cache_data(ttl=60, show_spinner=False)
 def carregar_lancamentos(uid):
     try:
@@ -1366,9 +1037,9 @@ def inserir_feedback(uid, mensagem):
         return True
     except Exception as e: st.error(f"❌ {e}"); return False
 
-# ─────────────────────────────────────────────
+# ═════════════════════════════════════════════
 #  CÁLCULOS
-# ─────────────────────────────────────────────
+# ═════════════════════════════════════════════
 def calcular_proxima_recorrente(inicio_pagamento):
     hoje = date.today(); inicio = to_date(inicio_pagamento); dia = inicio.day
     def montar(ano, mes):
@@ -1387,423 +1058,453 @@ def calcular_gasto_mensal(df):
     if df.empty: return 0.0
     df_a = df[~df["pago"].astype(bool)].copy()
     if df_a.empty: return 0.0
-    df_a["valor_total"] = df_a["valor_total"].astype(float)
+    df_a["valor_total"]     = df_a["valor_total"].astype(float)
     df_a["parcelas_totais"] = df_a["parcelas_totais"].astype(int)
     rec = df_a[df_a["recorrente"].astype(int) == 1]["valor_total"].sum()
     par = df_a[df_a["recorrente"].astype(int) == 0]
     return float(rec + (par["valor_total"] / par["parcelas_totais"].replace(0, 1)).sum())
 
-# ═════════════════════════════════════════════════════════════════════════════
-#   VALIDAÇÃO TOKEN DE SESSÃO NA URL (APENAS LEITURA DE SESSÃO EXISTENTE)
-# ═════════════════════════════════════════════════════════════════════════════
-if st.session_state.get("usuario_id") is None:
-    params = st.query_params
-
-    # ── Token de sessão normal (existente) ──
-    token_param = params.get("s", None)
-    if token_param:
-        uid_val = validar_token_sessao(token_param)
-        if uid_val:
+# ═════════════════════════════════════════════
+#  VALIDAÇÃO DO TOKEN DE SESSÃO "s" NA URL
+#  (somente leitura — run_query já existe aqui)
+# ═════════════════════════════════════════════
+if st.session_state.usuario_id is None:
+    _token_url = st.query_params.get("s", None)
+    if _token_url:
+        _uid_val = validar_token_sessao(_token_url)
+        if _uid_val:
             try:
-                # Como a run_query ainda não foi criada aqui no topo, 
-                # usamos uma verificação segura. Se ela não existir, o bloco de baixo trata o login.
-                if 'run_query' in globals():
-                    rows = run_query("SELECT id,nome FROM usuarios WHERE id=%s", (uid_val,), fetch=True)
-                    if rows:
-                        st.session_state.usuario_id   = rows[0]["id"]
-                        st.session_state.usuario_nome = rows[0]["nome"]
-                    else:
-                        st.query_params.clear()
-            except: 
+                _rows_s = run_query("SELECT id,nome FROM usuarios WHERE id=%s", (_uid_val,), fetch=True)
+                if _rows_s:
+                    st.session_state.usuario_id   = _rows_s[0]["id"]
+                    st.session_state.usuario_nome = _rows_s[0]["nome"]
+                else:
+                    st.query_params.clear()
+            except:
                 pass
         else:
             st.query_params.clear()
 
 # ═════════════════════════════════════════════
-#  TELA DE LOGIN / CADASTRO (INTERNACIONALIZADA)
+#  TELA DE LOGIN / CADASTRO
 # ═════════════════════════════════════════════
 if st.session_state.usuario_id is None:
 
-    # ── MISSÃO 2 — Seletor de idioma com key estática na tela de login ──
     _lang_map = {"🇧🇷 Português": "PT", "🇺🇸 English": "EN", "🇫🇷 Français": "FR"}
     _, _lc_lang, _ = st.columns([1, 1.6, 1])
     with _lc_lang:
         _sel_login = st.radio(
-            "idioma_login",
-            options=list(_lang_map.keys()),
+            "idioma_login", options=list(_lang_map.keys()),
             index=list(_lang_map.values()).index(st.session_state.lang),
-            horizontal=True,
-            key="seletor_idioma",          # chave estática — nunca reseta
-            label_visibility="collapsed"
+            horizontal=True, key="seletor_idioma", label_visibility="collapsed"
         )
         _novo_lang_login = _lang_map[_sel_login]
         if _novo_lang_login != st.session_state.lang:
             st.session_state.lang = _novo_lang_login
-            st.rerun()   # força reexecução imediata para aplicar tradução sem delay
+            st.rerun()
 
-    # Puxa as traduções atualizadas para a renderização abaixo
     t = get_t()
-
     _, col_center, _ = st.columns([1, 1.6, 1])
     with col_center:
         st.markdown(f"""
         <div class="login-wrap">
             <div class="login-logo">💳</div>
-            <div class="login-title">Gastei - {t.get('login_titulo_app', 'Finanças Premium')}</div>
-            <div class="login-sub">{t.get('login_sub_app', 'Controle de Gastos de Alta Performance')}</div>
-        </div>
-        """, unsafe_allow_html=True)
+            <div class="login-title">Gastei - {t.get('login_titulo_app','Finanças Premium')}</div>
+            <div class="login-sub">{t.get('login_sub_app','Controle de Gastos de Alta Performance')}</div>
+        </div>""", unsafe_allow_html=True)
 
-        aba_login, aba_cadastro = st.tabs([t.get('aba_entrar', "🔑  Entrar"), t.get('aba_criar_conta', "✨  Criar Conta")])
+        aba_login, aba_cadastro = st.tabs([
+            t.get("aba_entrar", "🔑  Entrar"),
+            t.get("aba_criar_conta", "✨  Criar Conta")
+        ])
 
-        if st.session_state.reset_step == 0:
+        # ── ABA LOGIN ──────────────────────────────
+        with aba_login:
+            if st.session_state.reset_step == 0:
                 st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
-                # Testando Atualizacao
-                
-                # ── Login Social ──────────────────────────
-                import secrets as _sec_oauth
-                st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
-                col_g, col_a = st.columns(2)
-                with col_g:
-                    # 1. Geramos o state de segurança e salvamos na sessão
-                    _state = _sec_oauth.token_hex(16)
-                    st.session_state.oauth_state = _state
-                    
-                    # 2. Geramos a URL oficial com base no Client ID e Redirect URI do seu secrets
-                    auth_url_google = google_get_auth_url(_state)
-                    
-                    # 3. Usamos o link_button que abre nativamente o fluxo do Google sem disparar o bloqueio 403 do navegador
-                    st.link_button(
-                        "🔵  Continuar com Google", 
-                        url=auth_url_google, 
-                        use_container_width=True
-                    )
+                # Botão Google OAuth
+                _state_g = _secrets.token_hex(16)
+                st.session_state.oauth_state = _state_g
+                _url_google = google_auth_url(_state_g)
+                if _url_google:
+                    st.link_button("🔵  Continuar com Google", url=_url_google, use_container_width=True)
 
-                with col_a:
-                    # Fazemos exatamente o mesmo fluxo seguro para o botão da Apple
-                    _state_a = _sec_oauth.token_hex(16)
-                    auth_url_apple = apple_get_auth_url(_state_a)
-                    
-                    st.link_button(
-                        "⚫  Continuar com Apple", 
-                        url=auth_url_apple, 
-                        use_container_width=True
-                    )
                 st.markdown("""
                 <div style="display:flex;align-items:center;gap:10px;margin:18px 0 12px;">
                   <div style="flex:1;height:1px;background:rgba(255,255,255,0.1);"></div>
                   <span style="color:#4b5563;font-size:12px;font-weight:600;">ou entre com e-mail</span>
                   <div style="flex:1;height:1px;background:rgba(255,255,255,0.1);"></div>
-                </div>
-                """, unsafe_allow_html=True)
-                # ── (campos de e-mail e senha existentes continuam abaixo) ──
-                # Testando Atualicacao Final 
-                
-                email_login = st.text_input(t.get('input_email', "E-mail"), key="login_email", placeholder=t.get('holder_email', "seu@email.com"))
-                senha_login = st.text_input(t.get('input_senha', "Senha"), type="password", key="login_senha", placeholder="••••••••")
+                </div>""", unsafe_allow_html=True)
+
+                email_login = st.text_input(t.get("input_email","E-mail"), key="login_email",
+                                            placeholder=t.get("holder_email","seu@email.com"))
+                senha_login = st.text_input(t.get("input_senha","Senha"), type="password",
+                                            key="login_senha", placeholder="••••••••")
                 st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-                
-                if st.button(t.get('btn_entrar_seta', "Entrar →"), key="btn_login"):
+
+                if st.button(t.get("btn_entrar_seta","Entrar →"), key="btn_login"):
                     if not email_login or not senha_login:
-                        st.error(t.get('err_preencha_dados', "Preencha e-mail e senha."))
+                        st.error(t.get("err_preencha_dados","Preencha e-mail e senha."))
                     else:
                         resultado = autenticar_usuario(email_login, senha_login)
                         if resultado == "bloqueado":
-                            st.error(t.get('err_bloqueado', "🛑 Acesso Bloqueado! Assinatura expirada ou e-mail não autorizado."))
+                            st.error(t.get("err_bloqueado","🛑 Acesso Bloqueado!"))
                         elif resultado:
                             st.session_state.usuario_id   = resultado[0]
                             st.session_state.usuario_nome = resultado[1]
                             st.query_params["s"] = gerar_token_sessao(resultado[0])
                             st.rerun()
                         else:
-                            st.error(t.get('err_dados_invalidos', "E-mail ou senha incorretos."))
-                            
+                            st.error(t.get("err_dados_invalidos","E-mail ou senha incorretos."))
+
                 st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
                 st.markdown('<div class="btn-link">', unsafe_allow_html=True)
-                if st.button(t.get('link_esqueceu', "🔑 Esqueci minha senha"), key="btn_forgot"):
+                if st.button(t.get("link_esqueceu","🔑 Esqueci minha senha"), key="btn_forgot"):
                     st.session_state.reset_step = 1; st.rerun()
                 st.markdown('</div>', unsafe_allow_html=True)
-                
-                numero_suporte = "5567991158892"
-                msg_wa = t.get('msg_suporte_wa', "Olá! Quero verificar o status do meu acesso no app Gastei.")
-                link_wa = f"https://wa.me/{numero_suporte}?text={msg_wa.replace(' ','%20')}"
+
+                _msg_wa  = t.get("msg_suporte_wa","Olá! Quero verificar o status do meu acesso no app Gastei.")
+                _link_wa = f"https://wa.me/{WA_SUPORTE}?text={_msg_wa.replace(' ','%20')}"
                 st.markdown(f"""
                 <div style='text-align:center;margin-top:8px;'>
-                    <a href="{link_wa}" target="_blank" style="color:#9b8dff;font-size:13px;text-decoration:none;opacity:0.8;">
-                        🔒 {t.get('link_suporte', 'Problemas com o acesso? — Falar com o Suporte')}</a>
+                    <a href="{_link_wa}" target="_blank" style="color:#9b8dff;font-size:13px;text-decoration:none;opacity:0.8;">
+                        🔒 {t.get('link_suporte','Problemas com o acesso? — Falar com o Suporte')}</a>
                 </div>
                 <div style='text-align:center;margin-top:8px;'>
                     <a href="https://finatechlab.com/pagina-vendas-gastei/" target="_blank"
                        style="color:#64b5f6;font-size:12px;text-decoration:none;opacity:0.65;">
-                        🛒 {t.get('link_vendas', 'Ainda não tem acesso? Conheça o Gastei →')}</a>
+                        🛒 {t.get('link_vendas','Ainda não tem acesso? Conheça o Gastei →')}</a>
                 </div>""", unsafe_allow_html=True)
                 st.markdown("<br>", unsafe_allow_html=True)
-                with st.expander(t.get('expander_termos', "🛡️ Termos de Uso e Política de Privacidade")):
-                    st.write(t.get('texto_termos', "Seus dados financeiros são armazenados de forma criptografada e privativa. Não compartilhamos suas informações."))
+                with st.expander(t.get("expander_termos","🛡️ Termos de Uso e Política de Privacidade")):
+                    st.write(t.get("texto_termos","Seus dados financeiros são armazenados de forma criptografada e privativa."))
+
+            elif st.session_state.reset_step == 1:
+                st.info(t.get("info_reset_email","📧 Informe o e-mail cadastrado. Enviaremos um código de 6 dígitos."))
+                email_reset = st.text_input(t.get("input_email_cadastrado","E-mail cadastrado"),
+                                            key="reset_email_input", placeholder="seu@email.com")
+                col_env, col_vol = st.columns(2)
+                with col_env:
+                    if st.button(t.get("btn_enviar_codigo","Enviar código →"), key="btn_send_token"):
+                        if not email_valido(email_reset): st.error("E-mail inválido.")
+                        else:
+                            rows = run_query("SELECT id FROM usuarios WHERE email=%s",
+                                             (email_reset.strip().lower(),), fetch=True)
+                            if not rows: st.error(t.get("err_email_nao_encontrado","E-mail não encontrado."))
+                            else:
+                                tok = gerar_token_reset(email_reset)
+                                if tok and enviar_email_reset(email_reset, tok):
+                                    st.session_state.reset_email = email_reset.strip().lower()
+                                    st.session_state.reset_step  = 2; st.rerun()
+                with col_vol:
+                    if st.button("← Voltar", key="btn_back_1"):
+                        st.session_state.reset_step = 0; st.rerun()
+
+            elif st.session_state.reset_step == 2:
+                st.success(t.get("sucesso_codigo_enviado","✅ Código enviado para **{}**.").format(st.session_state.reset_email))
+                codigo = st.text_input(t.get("input_codigo_digitos","Código de 6 dígitos"),
+                                       key="reset_token_input", placeholder="123456", max_chars=6)
+                nova1  = st.text_input(t.get("input_nova_senha","Nova senha"), type="password",
+                                       key="reset_pass1", placeholder="Mínimo 6 caracteres")
+                nova2  = st.text_input(t.get("input_confirmar_nova","Confirmar nova senha"),
+                                       type="password", key="reset_pass2", placeholder="Repita a senha")
+                col_conf, col_vol2 = st.columns(2)
+                with col_conf:
+                    if st.button(t.get("btn_redefinir_senha","Redefinir senha →"), key="btn_confirm_reset"):
+                        erros = []
+                        if not codigo.strip(): erros.append(t.get("err_informe_codigo","Informe o código."))
+                        if len(nova1) < 6:     erros.append(t.get("err_senha_curta","Mínimo 6 caracteres."))
+                        if nova1 != nova2:     erros.append(t.get("err_senhas_diferentes","Senhas não conferem."))
+                        if erros:
+                            for e in erros: st.error(e)
+                        elif not validar_token_reset(st.session_state.reset_email, codigo):
+                            st.error(t.get("err_codigo_expirado","Código inválido ou expirado."))
+                        else:
+                            if trocar_senha(st.session_state.reset_email, nova1):
+                                consumir_token_reset(st.session_state.reset_email, codigo)
+                                st.success(t.get("sucesso_senha_redefinida","🎉 Senha redefinida! Faça login."))
+                                st.session_state.reset_step = 0; st.session_state.reset_email = ""; st.rerun()
+                with col_vol2:
+                    if st.button("← Voltar", key="btn_back_2"):
+                        st.session_state.reset_step = 1; st.rerun()
+
+        # ── ABA CADASTRO ───────────────────────────
+        with aba_cadastro:
+            st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+            nome_cad   = st.text_input(t.get("input_nome","Seu nome"),         key="cad_nome",   placeholder="João Silva")
+            email_cad  = st.text_input(t.get("input_email","E-mail"),           key="cad_email",  placeholder="O mesmo e-mail usado na compra")
+            tel_cad    = st.text_input(t.get("input_telefone","WhatsApp / Telefone"), key="cad_tel", placeholder="(67) 99999-9999")
+            senha_cad  = st.text_input(t.get("input_senha","Senha"),     type="password", key="cad_senha",  placeholder="Mínimo 6 caracteres")
+            senha_cad2 = st.text_input(t.get("input_confirmar_senha","Confirmar senha"), type="password", key="cad_senha2", placeholder="Repita a senha")
+            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+            if st.button(t.get("btn_criar_conta","Criar minha conta →"), key="btn_cadastro"):
+                erros = []
+                if not all([nome_cad, email_cad, tel_cad, senha_cad, senha_cad2]):
+                    erros.append(t.get("err_campos_vazios","Preencha todos os campos."))
+                elif not email_valido(email_cad):   erros.append("E-mail inválido.")
+                elif not telefone_valido(tel_cad):  erros.append(t.get("err_tel_invalido","Telefone inválido."))
+                elif len(senha_cad) < 6:            erros.append(t.get("err_senha_curta","Mínimo 6 caracteres."))
+                elif senha_cad != senha_cad2:       erros.append(t.get("err_senhas_diferentes","Senhas não conferem."))
+                if erros:
+                    for e in erros: st.error(e)
+                else:
+                    ok, msg = criar_usuario(nome_cad, email_cad, senha_cad, tel_cad)
+                    if ok: st.success(t.get("sucesso_conta_criada","✅ Conta criada! Faça login na aba ao lado."))
+                    else:  st.error(msg)
+            st.markdown(f"""<div style='text-align:center;margin-top:16px;'>
+                <a href="https://finatechlab.com/pagina-vendas-gastei/" target="_blank"
+                   style="color:#64b5f6;font-size:12px;text-decoration:none;opacity:0.65;">
+                    🛒 {t.get('link_vendas_planos','Ainda não comprou? Conheça os planos →')}</a></div>""",
+                unsafe_allow_html=True)
+
+    st.stop()
 
 # ═════════════════════════════════════════════
-#  APP PRINCIPAL
+#  APP PRINCIPAL (só chega aqui se logado)
 # ═════════════════════════════════════════════
 uid = st.session_state.usuario_id
 st.query_params["s"] = gerar_token_sessao(uid)
 
-# ─────────────────────────────────────────────
-# MISSÃO 1 — Carrega salário do banco UMA VEZ por sessão logo após o login
-# ─────────────────────────────────────────────
+# Job de e-mails diário (silencioso, 1x/dia por instância)
+_job_diario(0)
+
+# Carrega salário uma vez por sessão
 if not st.session_state._salario_carregado:
     st.session_state.salario = buscar_salario_db(uid)
     st.session_state._salario_carregado = True
 
-# ─────────────────────────────────────────────
-#  SIDEBAR / SELETOR DE IDIOMA GLOBAL
-# ─────────────────────────────────────────────
+# ── Verifica trial e bloqueia se expirado ────
+_trial = verificar_trial(uid)
+if not _trial["acesso"]:
+    renderizar_tela_bloqueio(st.session_state.get("usuario_nome", ""))
+    st.stop()
+
+# ── Sidebar ──────────────────────────────────
 with st.sidebar:
     t = get_t()
-    st.markdown(f"### {t.get('idioma_label', '🌐 Idioma / Language')}")
-    
-    # 1. Calcula dinamicamente o índice inicial correto para o componente
-    _indice_padrao = 0
-    if st.session_state.lang == "EN":
-        _indice_padrao = 1
-    elif st.session_state.lang == "FR":
-        _indice_padrao = 2
-        
-    # 2. Componente de Seleção Limpo e Unificado
+    st.markdown(f"### {t.get('idioma_label','🌐 Idioma')}")
     _smap = {"🇧🇷 Português": "PT", "🇺🇸 English": "EN", "🇫🇷 Français": "FR"}
-    _sel_idioma_sidebar = st.selectbox(
-        label="Select Language",
+    _ssel = st.selectbox(
+        t.get("idioma_label","Idioma"),
         options=list(_smap.keys()),
-        index=_indice_padrao,
-        key="seletor_idioma",  # Chave lida pelo interceptador do topo do arquivo
-        label_visibility="collapsed"
+        index=list(_smap.values()).index(st.session_state.lang),
+        key="seletor_idioma", label_visibility="collapsed"
     )
-    
-    # 3. Faz a mudança em tempo de execução de forma limpa
-    _novo_lang = _smap[_sel_idioma_sidebar]
-    if _novo_lang != st.session_state.lang:
-        st.session_state.lang = _novo_lang
-        st.rerun()
+    if _smap[_ssel] != st.session_state.lang:
+        st.session_state.lang = _smap[_ssel]; st.rerun()
+    t = get_t()
 
     st.markdown("---")
-    
-    # MISSÃO 1 — Salário na sidebar (Apenas visível se logado, usando tratamento seguro .get)
-    st.markdown(f"### {t.get('salario_titulo', 'Salário Atual')}")
+    st.markdown(f"### {t.get('salario_titulo','💰 Meu Salário Mensal')}")
     _sal_sb = st.number_input(
-        t.get('salario_input', 'Valor'), min_value=0.0, step=100.0, format="%.2f",
+        t.get("salario_input","Salário"), min_value=0.0, step=100.0, format="%.2f",
         value=float(st.session_state.salario),
         key="input_salario_sidebar", label_visibility="collapsed"
     )
-    if st.button(t.get('salario_btn', 'Salvar Salário'), key="btn_sal_sidebar"):
-        if 'uid' in locals() or 'uid' in globals():
-            if salvar_salario_db(st.session_state.usuario_id, _sal_sb):
-                st.success(t.get('salario_salvo', 'Salvo com sucesso!'))
+    if st.button(t.get("salario_btn","💾 Salvar Salário"), key="btn_sal_sidebar"):
+        if salvar_salario_db(uid, _sal_sb):
+            st.success(t.get("salario_salvo","✅ Salário atualizado!"))
 
-# ── Recarrega t após possível mudança na sidebar ──
 t = get_t()
 
-# ─────────────────────────────────────────────
-#  HEADER DA APLICAÇÃO (LOGADO)
-# ─────────────────────────────────────────────
+# ── Header ───────────────────────────────────
 col_titulo, col_usuario, col_pref, col_logout = st.columns([5, 2, 0.6, 0.8])
 with col_titulo:
     st.markdown("# GASTEI ⚡")
-    st.markdown(f"<p style='color:#6b7280;margin-top:-12px;margin-bottom:28px;'>{t.get('app_subtitle', '')}</p>", unsafe_allow_html=True)
-
+    st.markdown(f"<p style='color:#6b7280;margin-top:-12px;margin-bottom:28px;'>{t.get('app_subtitle','')}</p>",
+                unsafe_allow_html=True)
 with col_usuario:
-    st.markdown(f"<div style='text-align:right;padding-top:18px;font-size:13px;color:#9ca3af;'>{t.get('ola', 'Olá')}, <strong style='color:#c4b5fd'>{st.session_state.usuario_nome}</strong> 👋</div>", unsafe_allow_html=True)
-
+    st.markdown(f"<div style='text-align:right;padding-top:18px;font-size:13px;color:#9ca3af;'>"
+                f"{t.get('ola','Olá')}, <strong style='color:#c4b5fd'>{st.session_state.usuario_nome}</strong> 👋</div>",
+                unsafe_allow_html=True)
 with col_pref:
     st.markdown("<div style='padding-top:14px'></div>", unsafe_allow_html=True)
     st.markdown('<div class="pref-btn">', unsafe_allow_html=True)
     if st.button("⚙️", key="btn_pref_toggle"):
-        st.session_state.pref_aberto = not st.session_state.pref_aberto
-        st.rerun()
+        st.session_state.pref_aberto = not st.session_state.pref_aberto; st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
-
 with col_logout:
     st.markdown("<div style='padding-top:14px'></div>", unsafe_allow_html=True)
     st.markdown('<div class="logout-btn">', unsafe_allow_html=True)
-    if st.button(t.get('sair', 'Sair'), key="btn_logout"):
-        for k in ["usuario_id", "usuario_nome", "salario", "pref_aberto", "_salario_carregado"]:
-            if k in ("usuario_id", "usuario_nome"): 
-                st.session_state[k] = None
-            elif k == "pref_aberto":               
-                st.session_state[k] = False
-            elif k == "_salario_carregado":        
-                st.session_state[k] = False
-            else:                                  
-                st.session_state[k] = 0.0
-        st.query_params.clear()
-        st.rerun()
+    if st.button(t.get("sair","🚪"), key="btn_logout"):
+        for k in list(st.session_state.keys()): del st.session_state[k]
+        st.query_params.clear(); st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
-# ── Painel ⚙️ inline ─────────────────────────────
+
+# ── Banner de aviso de trial (≤ 2 dias) ──────
+if _trial["status"] == "trial" and _trial.get("dias_restantes", 999) <= 2:
+    _dr = _trial["dias_restantes"]
+    st.markdown(f"""
+    <div style="background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.4);
+                border-radius:10px;padding:10px 18px;margin-bottom:16px;
+                display:flex;align-items:center;justify-content:space-between;gap:12px;">
+      <span style="color:#fde047;font-size:13px;font-weight:700;">
+        {t.get('trial_aviso','⏰ Seu teste grátis termina em **{} dia(s)**!').format(_dr)}
+      </span>
+      <a href="{KIWIFY_URL}" target="_blank"
+         style="background:linear-gradient(135deg,#6a3de8,#9b8dff);color:#fff;
+                text-decoration:none;padding:7px 18px;border-radius:8px;
+                font-size:12px;font-weight:700;white-space:nowrap;">
+        {t.get('trial_assinar','🔓 Assinar agora')}
+      </a>
+    </div>""", unsafe_allow_html=True)
+
+# ── Painel ⚙️ ────────────────────────────────
 if st.session_state.pref_aberto:
     st.markdown('<div class="pref-panel">', unsafe_allow_html=True)
     _pc1, _pc2, _pc3 = st.columns([1.2, 1.5, 0.6])
     with _pc1:
-        # MISSÃO 2 — radio dentro do painel usa key estática (compartilhada com sidebar via session_state)
-        st.markdown(f"<p style='color:#9b8dff;font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:6px;'>{t['idioma_label']}</p>", unsafe_allow_html=True)
-        _pmap = {"Português": "PT", "English": "EN", "Français": "FR"}
-        _psel = st.radio(
-            "lang_panel", options=list(_pmap.keys()),
-            index=list(_pmap.values()).index(st.session_state.lang),
-            key="lang_radio_panel", label_visibility="collapsed"
-        )
-        _novo_lang_panel = _pmap[_psel]
-        if _novo_lang_panel != st.session_state.lang:
-            st.session_state.lang = _novo_lang_panel
-            st.rerun()
+        st.markdown(f"<p style='color:#9b8dff;font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:6px;'>{t.get('idioma_label','🌐 Idioma')}</p>",
+                    unsafe_allow_html=True)
+        _pmap = {"🇧🇷 Português": "PT", "🇺🇸 English": "EN", "🇫🇷 Français": "FR"}
+        _psel = st.radio("lang_panel", options=list(_pmap.keys()),
+                         index=list(_pmap.values()).index(st.session_state.lang),
+                         key="lang_radio_panel", label_visibility="collapsed")
+        if _pmap[_psel] != st.session_state.lang:
+            st.session_state.lang = _pmap[_psel]; st.rerun()
         t = get_t()
     with _pc2:
-        # MISSÃO 1 — salário no painel: só salva no DB ao clicar no botão
-        st.markdown(f"<p style='color:#9b8dff;font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:6px;'>💰 {t['salario_titulo']}</p>", unsafe_allow_html=True)
+        st.markdown(f"<p style='color:#9b8dff;font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:6px;'>💰 {t.get('salario_titulo','Salário')}</p>",
+                    unsafe_allow_html=True)
         _sal_p = st.number_input(
-            t["salario_input"], min_value=0.0, step=100.0, format="%.2f",
-            value=float(st.session_state.salario),
-            key="sal_panel", label_visibility="collapsed"
+            t.get("salario_input","Salário"), min_value=0.0, step=100.0, format="%.2f",
+            value=float(st.session_state.salario), key="sal_panel", label_visibility="collapsed"
         )
-        if st.button(t["salario_btn"], key="btn_sal_panel"):
+        if st.button(t.get("salario_btn","💾 Salvar Salário"), key="btn_sal_panel"):
             if salvar_salario_db(uid, _sal_p):
-                st.success(t["salario_salvo"])
+                st.success(t.get("salario_salvo","✅ Salário atualizado!"))
     with _pc3:
         st.markdown("<div style='padding-top:26px'></div>", unsafe_allow_html=True)
-        if st.button(f"✕ {t['pref_fechar']}", key="btn_pref_close"):
+        if st.button(f"✕ {t.get('pref_fechar','Fechar')}", key="btn_pref_close"):
             st.session_state.pref_aberto = False; st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
 
-# ── Abas principais ─────────────────────────────
-aba_principal, aba_feedback = st.tabs([t["aba_gastos"], t["aba_feedback"]])
+# ── Abas ─────────────────────────────────────
+aba_principal, aba_feedback = st.tabs([t.get("aba_gastos","📊 Meus Gastos"), t.get("aba_feedback","💬 Feedbacks")])
 
 # ══════════════════════════════
 # ABA 1 — GASTOS
 # ══════════════════════════════
 with aba_principal:
-    # MISSÃO 3 — uma única chamada cacheada; df_all é reutilizado tanto nos cards quanto no histórico
     df_all       = carregar_lancamentos(uid)
     total_saidas = df_all["valor_total"].astype(float).sum() if not df_all.empty else 0.0
     gasto_mensal = calcular_gasto_mensal(df_all) if not df_all.empty else 0.0
     salario      = float(st.session_state.salario)
 
-    # ── 3 cards de resumo ──────────────────────
     col_a, col_b, col_c = st.columns(3)
     with col_a:
         st.markdown(f"""<div class="total-card">
-            <div><div class="total-label">{t['total_saidas']}</div>
+            <div><div class="total-label">{t.get('total_saidas','Total de Saídas')}</div>
                  <div class="total-value">R$ {total_saidas:,.2f}</div></div>
             <div class="total-icon">📊</div></div>""", unsafe_allow_html=True)
     with col_b:
         st.markdown(f"""<div class="parcela-card">
-            <div><div class="parcela-label">{t['comprometido_mes']}</div>
+            <div><div class="parcela-label">{t.get('comprometido_mes','Comprometido Este Mês')}</div>
                  <div class="parcela-value">R$ {gasto_mensal:,.2f}</div></div>
             <div style="font-size:48px;opacity:0.4;">📅</div></div>""", unsafe_allow_html=True)
     with col_c:
         if salario > 0:
-            pct  = (gasto_mensal / salario) * 100
-            cls  = "salario-card alerta" if pct >= 70 else "salario-card"
-            icon = "🚨" if pct >= 70 else "💰"
+            pct = (gasto_mensal / salario) * 100
+            cls = "salario-card alerta" if pct >= 70 else "salario-card"
+            ico = "🚨" if pct >= 70 else "💰"
             st.markdown(f"""<div class="{cls}">
-                <div><div class="salario-label">{t['salario_comprometido']}</div>
+                <div><div class="salario-label">{t.get('salario_comprometido','Salário Comprometido')}</div>
                      <div class="salario-value">{pct:.1f}%</div>
-                     <div style="font-size:11px;color:#6b7280;margin-top:4px;">{t['pct_label']}</div></div>
-                <div style="font-size:48px;opacity:0.5;">{icon}</div></div>""", unsafe_allow_html=True)
+                     <div style="font-size:11px;color:#6b7280;margin-top:4px;">{t.get('pct_label','% do salário comprometido no próximo mês')}</div></div>
+                <div style="font-size:48px;opacity:0.5;">{ico}</div></div>""", unsafe_allow_html=True)
         else:
             st.markdown(f"""<div class="salario-card" style="opacity:0.55;">
-                <div><div class="salario-label">{t['salario_comprometido']}</div>
+                <div><div class="salario-label">{t.get('salario_comprometido','Salário Comprometido')}</div>
                      <div class="salario-value">--%</div></div>
                 <div style="font-size:48px;opacity:0.3;">💰</div></div>""", unsafe_allow_html=True)
-            st.caption(t["salario_zero_aviso"])
+            st.caption(t.get("salario_zero_aviso","⚠️ Cadastre seu salário no painel ⚙️."))
 
     # ── Formulário novo lançamento ─────────────
-    # MISSÃO 3 — st.form isola todos os inputs; o Streamlit só re-renderiza
-    #            a simulação ao submeter, eliminando reruns a cada dígito digitado.
-    #            A simulação leve fica em st.empty() fora do form para feedback visual.
-    st.markdown(f"### {t['novo_lancamento']}")
+    st.markdown(f"### {t.get('novo_lancamento','➕ Novo Lançamento')}")
     st.markdown('<div class="form-section">', unsafe_allow_html=True)
-
-    _sim_placeholder = st.empty()   # exibe prévia da simulação ACIMA do form (sem travar inputs)
-
     with st.form("form_novo_lancamento", clear_on_submit=True):
         col1, col2 = st.columns([2, 1])
         with col1:
-            descricao = st.text_input(t["o_que_comprou"], placeholder=t["placeholder_desc"])
+            descricao = st.text_input(t.get("o_que_comprou","O que comprou / Pagou"),
+                                      placeholder=t.get("placeholder_desc","Ex: iPhone 16, Aluguel..."))
         with col2:
-            valor_total = st.number_input(t["valor_total"], min_value=0.0, step=0.01, format="%.2f", value=0.0)
-
-        is_recorrente = st.checkbox(t["conta_fixa"])
+            valor_total = st.number_input(t.get("valor_total","Valor Total (R$)"),
+                                          min_value=0.0, step=0.01, format="%.2f", value=0.0)
+        is_recorrente = st.checkbox(t.get("conta_fixa","🔁 Conta Fixa / Recorrente"))
 
         if is_recorrente:
             col4, _ = st.columns([1, 2])
             with col4:
-                inicio_pagamento = st.date_input(t["dia_vencimento"], value=date.today(), format="DD/MM/YYYY")
+                inicio_pagamento = st.date_input(t.get("dia_vencimento","Dia de Vencimento"),
+                                                 value=date.today(), format="DD/MM/YYYY")
             parcelas_totais = 0; final_pagamento = None
-            # Prévia apenas se campos preenchidos — dentro do form é estático até Submit
             if descricao and valor_total > 0:
-                proxima_rec = calcular_proxima_recorrente(inicio_pagamento)
+                prox_rec = calcular_proxima_recorrente(inicio_pagamento)
                 st.markdown("<hr>", unsafe_allow_html=True)
                 pc1, pc2, pc3 = st.columns(3)
-                with pc1: st.markdown(f"{t['valor_mensal']} `R$ {valor_total:,.2f}`")
-                with pc2: st.markdown(f"{t['tipo_recorrente']} `🔁 Recorrente`")
-                with pc3: st.markdown(f"{t['prox_vencimento']} `{proxima_rec.strftime('%d/%m/%Y')}`")
+                with pc1: st.markdown(f"{t.get('valor_mensal','**Valor mensal:**')} `R$ {valor_total:,.2f}`")
+                with pc2: st.markdown(f"{t.get('tipo_recorrente','**Tipo:**')} `🔁 Recorrente`")
+                with pc3: st.markdown(f"{t.get('prox_vencimento','**Próximo vencimento:**')} `{prox_rec.strftime('%d/%m/%Y')}`")
         else:
             col3, col4 = st.columns(2)
             with col3:
-                parcelas_totais = st.number_input(t["num_parcelas"], min_value=1, max_value=360, step=1, value=1)
+                parcelas_totais = st.number_input(t.get("num_parcelas","Número de Parcelas"),
+                                                  min_value=1, max_value=360, step=1, value=1)
             with col4:
-                inicio_pagamento = st.date_input(t["data_primeiro_venc"], value=date.today(), format="DD/MM/YYYY")
+                inicio_pagamento = st.date_input(t.get("data_primeiro_venc","Data do Primeiro Vencimento"),
+                                                 value=date.today(), format="DD/MM/YYYY")
             final_pagamento = None
             if descricao and valor_total > 0:
                 val_p = calcular_valor_parcela(valor_total, parcelas_totais)
                 st.markdown("<hr>", unsafe_allow_html=True)
                 pc1, pc2, pc3 = st.columns(3)
-                with pc1: st.markdown(f"{t['valor_parcela']} `R$ {val_p:.2f}`")
-                with pc2: st.markdown(f"{t['parcelas_restantes']} `{parcelas_totais}x`")
-                with pc3: st.markdown(f"{t['venc_parcela1']} `{inicio_pagamento.strftime('%d/%m/%Y')}`")
+                with pc1: st.markdown(f"{t.get('valor_parcela','**Valor por parcela:**')} `R$ {val_p:.2f}`")
+                with pc2: st.markdown(f"{t.get('parcelas_restantes','**Parcelas restantes:**')} `{parcelas_totais}x`")
+                with pc3: st.markdown(f"{t.get('venc_parcela1','**Vencimento da Parcela 1:**')} `{inicio_pagamento.strftime('%d/%m/%Y')}`")
 
-        # ── SIMULAÇÃO DE IMPACTO (dentro do form — processa ao Submit) ──
         if valor_total > 0 and salario > 0:
             parc_sim    = parcelas_totais if (parcelas_totais and not is_recorrente) else 1
             mensal_novo = valor_total / parc_sim if parc_sim > 0 else valor_total
             total_sim   = gasto_mensal + mensal_novo
             pct_sim     = (total_sim / salario) * 100
-            st.markdown(t["sim_info"].format(total_sim, pct_sim))
+            st.markdown(t.get("sim_info","💡 Com este gasto: **R$ {:.2f}/mês** comprometido ({:.1f}% do salário).").format(total_sim, pct_sim))
             if pct_sim > 70:
                 st.markdown(f"""<div class="alerta-simulacao">
                     <span class="pct-destaque">⚠️ {pct_sim:.1f}%</span>
-                    {t["sim_alerta"].format(pct_sim)}
+                    {t.get("sim_alerta","").format(pct_sim)}
                 </div>""", unsafe_allow_html=True)
             else:
-                st.success(t["sim_ok"])
+                st.success(t.get("sim_ok","✅ Dentro do limite saudável."))
         elif valor_total > 0 and salario == 0:
-            st.caption(t["salario_zero_aviso"])
+            st.caption(t.get("salario_zero_aviso","⚠️ Cadastre seu salário no painel ⚙️."))
 
         col_btn, _ = st.columns([1, 3])
         with col_btn:
-            submitted = st.form_submit_button(t["salvar_lancamento"])
-
+            submitted = st.form_submit_button(t.get("salvar_lancamento","💾 Salvar Lançamento"))
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # ── Processa o submit FORA do form (sem bloquear re-render do form) ──
     if submitted:
         erros = []
-        if not descricao.strip(): erros.append(t["err_descricao"])
-        if valor_total <= 0:      erros.append(t["err_valor"])
+        if not descricao.strip(): erros.append(t.get("err_descricao","⚠️ Preencha a descrição."))
+        if valor_total <= 0:      erros.append(t.get("err_valor","⚠️ O valor deve ser maior que zero."))
         if erros:
             for e in erros: st.error(e)
         else:
             inserir_lancamento(uid, descricao.strip(), valor_total, parcelas_totais,
                                inicio_pagamento, final_pagamento, is_recorrente)
-            st.success(t["salvo_sucesso"].format(descricao))
+            st.success(t.get("salvo_sucesso","✅ **{}** salvo com sucesso!").format(descricao))
             st.rerun()
 
     # ── Histórico ──────────────────────────────
-    # MISSÃO 3 — reutiliza df_all já cacheado; não faz segunda consulta ao banco
-    st.markdown(t["historico"])
+    st.markdown(t.get("historico","### 📋 Histórico de Vencimentos"))
     df = df_all.copy()
     if df.empty:
-        st.markdown(f"<div style='text-align:center;padding:60px 20px;color:#4b5563;'><div style='font-size:48px;'>📭</div>{t['nenhum_lancamento']}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='text-align:center;padding:60px 20px;color:#4b5563;'><div style='font-size:48px;'>📭</div>{t.get('nenhum_lancamento','Nenhum lançamento ainda.')}</div>",
+                    unsafe_allow_html=True)
     else:
-        busca = st.text_input(t["filtrar"], placeholder=t["placeholder_busca"], key="busca")
+        busca = st.text_input(t.get("filtrar","🔍 Filtrar por descrição"),
+                              placeholder=t.get("placeholder_busca","Digite para buscar..."), key="busca")
         if busca.strip():
             df = df[df["descricao"].str.contains(busca.strip(), case=False, na=False)]
 
@@ -1815,65 +1516,57 @@ with aba_principal:
         def _grp(row):
             if row["_pago"]: return (4, date(9999,12,31))
             v = row["_venc"]
-            if v < hoje:                          return (0, v)
-            if v == hoje:                         return (1, v)
-            if v <= hoje + timedelta(days=3):     return (2, v)
+            if v < hoje:                      return (0, v)
+            if v == hoje:                     return (1, v)
+            if v <= hoje + timedelta(days=3): return (2, v)
             return (3, v)
         df["_sort"] = df.apply(_grp, axis=1)
         df = df.sort_values("_sort").drop(columns=["_pago","_rec","_venc","_sort"])
 
-        # ── Banners de alerta ──
-        _ativos   = ~df["pago"].astype(bool)
-        _vc       = df.apply(lambda r: calcular_proxima_recorrente(to_date(r["inicio_pagamento"]))
-                             if int(r["recorrente"]) == 1 else to_date(r["inicio_pagamento"]), axis=1)
-        n_atr  = int((_ativos & (_vc < hoje)).sum())
-        n_hj   = int((_ativos & (_vc == hoje)).sum())
-        n_brv  = int((_ativos & (_vc > hoje) & (_vc <= hoje + timedelta(days=3))).sum())
+        _ativos = ~df["pago"].astype(bool)
+        _vc = df.apply(lambda r: calcular_proxima_recorrente(to_date(r["inicio_pagamento"]))
+                       if int(r["recorrente"]) == 1 else to_date(r["inicio_pagamento"]), axis=1)
+        n_atr = int((_ativos & (_vc < hoje)).sum())
+        n_hj  = int((_ativos & (_vc == hoje)).sum())
+        n_brv = int((_ativos & (_vc > hoje) & (_vc <= hoje + timedelta(days=3))).sum())
 
         if n_atr:
-            pl = t["conta_atrasada_s"] if n_atr == 1 else t["conta_atrasada_p"]
-            st.markdown(f"""<div class="alerta-banner">
-                🚨 <span class="count">{n_atr}</span> {pl} — {t['alerta_atrasada_sufixo']}
-            </div>""", unsafe_allow_html=True)
+            pl = t.get("conta_atrasada_s","conta atrasada") if n_atr == 1 else t.get("conta_atrasada_p","contas atrasadas")
+            st.markdown(f"""<div class="alerta-banner">🚨 <span class="count">{n_atr}</span> {pl} — {t.get('alerta_atrasada_sufixo','quite agora!')}</div>""",
+                        unsafe_allow_html=True)
         if n_hj:
-            pl = t["conta_hoje_s"] if n_hj == 1 else t["conta_hoje_p"]
-            st.markdown(f"""<div class="hoje-banner">
-                🔥 <span style="background:#f97316;color:#fff;border-radius:999px;padding:1px 8px;font-weight:800;">{n_hj}</span>
-                {pl} — {t['alerta_hoje_sufixo']}
-            </div>""", unsafe_allow_html=True)
+            pl = t.get("conta_hoje_s","conta vence hoje") if n_hj == 1 else t.get("conta_hoje_p","contas vencem hoje")
+            st.markdown(f"""<div class="hoje-banner">🔥 <span style="background:#f97316;color:#fff;border-radius:999px;padding:1px 8px;font-weight:800;">{n_hj}</span> {pl} — {t.get('alerta_hoje_sufixo','não deixe passar!')}</div>""",
+                        unsafe_allow_html=True)
         if n_brv and not n_atr and not n_hj:
-            pl = t["conta_breve_s"] if n_brv == 1 else t["conta_breve_p"]
-            st.markdown(f"""<div style="display:flex;align-items:center;gap:8px;background:rgba(234,179,8,0.09);
-                border:1px solid rgba(234,179,8,0.3);border-radius:10px;padding:7px 14px;
-                font-size:11px;font-weight:700;color:#fde047;margin-bottom:8px;">
-                ⚡ {n_brv} {pl} — {t['alerta_breve_sufixo']}
-            </div>""", unsafe_allow_html=True)
+            pl = t.get("conta_breve_s","conta vence") if n_brv == 1 else t.get("conta_breve_p","contas vencem")
+            st.markdown(f"""<div style="display:flex;align-items:center;gap:8px;background:rgba(234,179,8,0.09);border:1px solid rgba(234,179,8,0.3);border-radius:10px;padding:7px 14px;font-size:11px;font-weight:700;color:#fde047;margin-bottom:8px;">
+                ⚡ {n_brv} {pl} — {t.get('alerta_breve_sufixo','nos próximos 3 dias')}</div>""", unsafe_allow_html=True)
 
         st.markdown(f"""<div style="display:grid;grid-template-columns:2.2fr 1fr 1fr 1fr 0.8fr;
             padding:10px 24px;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:1px;">
-            <div>{t['col_descricao']}</div><div>{t['col_valor']}</div>
-            <div>{t['col_vencimento']}</div><div>{t['col_situacao']}</div>
-            <div style="text-align:center">{t['col_acoes']}</div>
-        </div>""", unsafe_allow_html=True)
+            <div>{t.get('col_descricao','Descrição')}</div><div>{t.get('col_valor','Valor')}</div>
+            <div>{t.get('col_vencimento','Próximo Vencimento')}</div><div>{t.get('col_situacao','Situação')}</div>
+            <div style="text-align:center">{t.get('col_acoes','Ações')}</div></div>""", unsafe_allow_html=True)
 
         for _, row in df.iterrows():
-            id_           = row["id"]
-            desc          = row["descricao"]
-            v_tot         = float(row["valor_total"])
-            parc_tot      = int(row["parcelas_totais"])
-            parc_pagas    = int(row.get("parcelas_pagas", 0))
-            parc_rest     = max(0, parc_tot - parc_pagas)
-            eh_fixa       = int(row["recorrente"]) == 1
-            pago_fim      = bool(row["pago"])
-            val_exibir    = v_tot if eh_fixa else calcular_valor_parcela(v_tot, parc_tot)
-            venc_data     = calcular_proxima_recorrente(to_date(row["inicio_pagamento"])) if eh_fixa else to_date(row["inicio_pagamento"])
+            id_        = row["id"]
+            desc       = row["descricao"]
+            v_tot      = float(row["valor_total"])
+            parc_tot   = int(row["parcelas_totais"])
+            parc_pagas = int(row.get("parcelas_pagas", 0))
+            parc_rest  = max(0, parc_tot - parc_pagas)
+            eh_fixa    = int(row["recorrente"]) == 1
+            pago_fim   = bool(row["pago"])
+            val_exibir = v_tot if eh_fixa else calcular_valor_parcela(v_tot, parc_tot)
+            venc_data  = calcular_proxima_recorrente(to_date(row["inicio_pagamento"])) if eh_fixa else to_date(row["inicio_pagamento"])
 
             col_r1, col_r2, col_r3, col_r4, col_r5 = st.columns([2.2, 1, 1, 1, 0.8])
             with col_r1:
-                sub = f"{t['total_label']} R$ {v_tot:,.2f} · {t['inicio_label']} {to_date(row['inicio_pagamento']).strftime('%d/%m/%Y')}" if not eh_fixa else t["conta_mensal_fixa"]
+                sub = f"{t.get('total_label','Total:')} R$ {v_tot:,.2f} · {t.get('inicio_label','Início:')} {to_date(row['inicio_pagamento']).strftime('%d/%m/%Y')}" if not eh_fixa else t.get("conta_mensal_fixa","Conta Mensal Fixa")
                 st.markdown(f"<div style='padding-top:12px'><strong style='color:#fff;font-size:15px;'>{desc}</strong><br><span style='color:#6b7280;font-size:11px;'>{sub}</span></div>", unsafe_allow_html=True)
             with col_r2:
-                lbl = t["label_mensal"] if eh_fixa else t["label_parcela"]
+                lbl = t.get("label_mensal","mensal") if eh_fixa else t.get("label_parcela","por parcela")
                 st.markdown(f"<div style='padding-top:12px'><strong style='font-family:JetBrains Mono;color:#9b8dff;font-size:16px;'>R$ {val_exibir:,.2f}</strong><br><span style='color:#6b7280;font-size:11px;'>{lbl}</span></div>", unsafe_allow_html=True)
             with col_r3:
                 if pago_fim:
@@ -1889,13 +1582,12 @@ with aba_principal:
                     st.markdown(f"<div style='padding-top:18px'><span class='badge-vence'>📅 {venc_data.strftime('%d/%m/%Y')}</span></div>", unsafe_allow_html=True)
             with col_r4:
                 if pago_fim:
-                    st.markdown(f"<div style='padding-top:18px;color:#4b5563;font-size:13px;'>{t['divida_encerrada']}</div>", unsafe_allow_html=True)
+                    st.markdown(f"<div style='padding-top:18px;color:#4b5563;font-size:13px;'>{t.get('divida_encerrada','Dívida Encerrada')}</div>", unsafe_allow_html=True)
                 elif eh_fixa:
-                    st.markdown(f"<div style='padding-top:18px'><span class='badge-fixa'>{t['recorrente_inf']}</span></div>", unsafe_allow_html=True)
+                    st.markdown(f"<div style='padding-top:18px'><span class='badge-fixa'>{t.get('recorrente_inf','Recorrente ∞')}</span></div>", unsafe_allow_html=True)
                 else:
                     try:
-                        mf = max(0, parc_rest - 1)
-                        du = venc_data.day
+                        mf = max(0, parc_rest - 1); du = venc_data.day
                         mu = (venc_data.month + mf - 1) % 12 + 1
                         au = venc_data.year + ((venc_data.month + mf - 1) // 12)
                         try:    dup = date(au, mu, du)
@@ -1904,44 +1596,45 @@ with aba_principal:
                     except: txt_u = "--/--/----"
                     falta = max(0.0, v_tot - (parc_pagas * val_exibir))
                     st.markdown(f"""<div style='padding-top:4px'>
-                        <span class='badge-parcelas'>{parc_rest}x {t['x_restantes']}</span><br>
-                        <span style='color:#6b7280;font-size:11px;display:block;margin-top:2px;'>{t['ultima_parcela']} <strong style='color:#90cdf4;'>{txt_u}</strong></span>
-                        <span style='color:#6b7280;font-size:10px;display:block;'>{t['falta_pagar']} R$ {falta:,.2f}</span>
+                        <span class='badge-parcelas'>{parc_rest}x {t.get('x_restantes','x restantes')}</span><br>
+                        <span style='color:#6b7280;font-size:11px;display:block;margin-top:2px;'>{t.get('ultima_parcela','Última parcela:')} <strong style='color:#90cdf4;'>{txt_u}</strong></span>
+                        <span style='color:#6b7280;font-size:10px;display:block;'>{t.get('falta_pagar','Falta pagar:')} R$ {falta:,.2f}</span>
                     </div>""", unsafe_allow_html=True)
             with col_r5:
                 if not pago_fim:
                     st.markdown('<div class="btn-pagar">', unsafe_allow_html=True)
-                    if st.button(t["btn_pagar"], key=f"btn_p_{id_}"):
+                    if st.button(t.get("btn_pagar","💸 Pagar Parcela"), key=f"btn_p_{id_}"):
                         if eh_fixa: avancar_parcela_recorrente(id_, row["inicio_pagamento"])
                         else: avancar_parcela_parcelada_excel(id_, row["inicio_pagamento"], parc_tot, parc_pagas)
                         st.rerun()
                     st.markdown('</div>', unsafe_allow_html=True)
                     st.markdown('<div class="btn-quitar">', unsafe_allow_html=True)
-                    if st.button(t["btn_quitar"], key=f"btn_q_{id_}"):
+                    if st.button(t.get("btn_quitar","🏁 Quitar Tudo"), key=f"btn_q_{id_}"):
                         marcar_pago(id_); st.rerun()
                     st.markdown('</div>', unsafe_allow_html=True)
                 else:
-                    if st.button(t["btn_excluir"], key=f"btn_del_{id_}"):
+                    if st.button(t.get("btn_excluir","🗑️ Excluir"), key=f"btn_del_{id_}"):
                         excluir_lancamento(id_); st.rerun()
 
-        st.markdown(f"<br><br><center style='color:#4b5563;font-size:12px;'>{t['rodape']}</center>", unsafe_allow_html=True)
+        st.markdown(f"<br><br><center style='color:#4b5563;font-size:12px;'>{t.get('rodape','© 2026 Gastei App.')}</center>", unsafe_allow_html=True)
 
 # ══════════════════════════════
 # ABA 2 — FEEDBACK
 # ══════════════════════════════
 with aba_feedback:
     t = get_t()
-    st.markdown(t["feedback_titulo"])
-    st.markdown(f"<p style='color:#9ca3af;margin-top:-10px;'>{t['feedback_sub']}</p>", unsafe_allow_html=True)
-    with st.container():
-        st.markdown('<div class="form-section">', unsafe_allow_html=True)
-        mensagem_fb = st.text_area(t["feedback_label"], placeholder=t["feedback_placeholder"], height=160, key="feedback_texto")
-        col_fb, _ = st.columns([1, 3])
-        with col_fb:
-            if st.button(t["feedback_btn"], key="btn_feedback"):
-                if not mensagem_fb.strip():       st.error(t["feedback_vazio"])
-                elif len(mensagem_fb.strip()) < 8: st.error(t["feedback_curto"])
-                else:
-                    if inserir_feedback(uid, mensagem_fb):
-                        st.success(t["feedback_ok"]); st.balloons()
-        st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown(t.get("feedback_titulo","### 💬 Canal Direct de Sugestões & Feedbacks"))
+    st.markdown(f"<p style='color:#9ca3af;margin-top:-10px;'>{t.get('feedback_sub','')}</p>", unsafe_allow_html=True)
+    st.markdown('<div class="form-section">', unsafe_allow_html=True)
+    mensagem_fb = st.text_area(t.get("feedback_label","Sua mensagem"),
+                               placeholder=t.get("feedback_placeholder","Ex: Seria massa ver um gráfico..."),
+                               height=160, key="feedback_texto")
+    col_fb, _ = st.columns([1, 3])
+    with col_fb:
+        if st.button(t.get("feedback_btn","📨 Enviar Meu Feedback"), key="btn_feedback"):
+            if not mensagem_fb.strip():        st.error(t.get("feedback_vazio","⚠️ Escreva algo antes de clicar em enviar."))
+            elif len(mensagem_fb.strip()) < 8: st.error(t.get("feedback_curto","⚠️ Detalhe um pouquinho mais."))
+            else:
+                if inserir_feedback(uid, mensagem_fb):
+                    st.success(t.get("feedback_ok","✅ Feedback enviado! Muito obrigado 🙏")); st.balloons()
+    st.markdown('</div>', unsafe_allow_html=True)
