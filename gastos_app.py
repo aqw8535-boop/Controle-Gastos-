@@ -1418,7 +1418,7 @@ with st.sidebar:
                         st.markdown(
                             f"<div style='background:rgba(155,141,255,0.08);border:1px solid rgba(155,141,255,0.2);"
                             f"border-radius:10px;padding:10px 14px;font-size:12px;color:#c4b5fd;line-height:1.55;'>"
-                            f"🌱 Olá! Você está no seu {_dia_num}º dia de teste gratuito. "
+                            f"🌱 Olá! Você está no {_dia_num}º de 7 dias de teste gratuito. "
                             f"Aproveite para organizar suas finanças com calma!</div>",
                             unsafe_allow_html=True)
                     else:
