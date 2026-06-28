@@ -728,7 +728,6 @@ def validar_token_sessao(token):
 # ═════════════════════════════════════════════
 #  PAYWALL (licenças manuais)
 # ═════════════════════════════════════════════
-@st.cache_data(ttl=300, show_spinner=False)
 from datetime import datetime
 
 @st.cache_data(ttl=60, show_spinner=False) # Diminuí o TTL para 1 minuto para testar mais rápido
