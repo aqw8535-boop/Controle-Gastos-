@@ -205,7 +205,7 @@ IDIOMAS = {
         "btn_pagar": "💸 Pay Installment", "btn_quitar": "🏁 Pay Off All", "btn_excluir": "🗑️ Delete",
         "salario_titulo": "💰 My Monthly Salary", "salario_input": "Net Monthly Salary (R$)",
         "salario_btn": "💾 Save Salary", "salario_salvo": "✅ Salary updated!",
-        "salario_zero_aviso": "⚠️ Set your salary in the ⚙️ panel to see the committed % of income.",
+        "salario_zero_aviso": "⚠️ Set your salary in the »️ panel to see the committed % of income.",
         "pct_label": "% of salary committed next month",
         "sim_alerta": (
             "⚠️ ARE YOU SURE YOU WANT TO MAKE THIS EXPENSE? {:.1f}% OF YOUR SALARY WILL BE COMMITTED; "
@@ -289,7 +289,7 @@ IDIOMAS = {
         "btn_pagar": "💸 Payer le Versement", "btn_quitar": "🏁 Tout Régler", "btn_excluir": "🗑️ Supprimer",
         "salario_titulo": "💰 Mon Salaire Mensuel", "salario_input": "Salaire Mensuel Net (R$)",
         "salario_btn": "💾 Sauvegarder", "salario_salvo": "✅ Salaire mis à jour !",
-        "salario_zero_aviso": "⚠️ Enregistrez votre salaire dans le panneau ⚙️ pour voir le % engagé.",
+        "salario_zero_aviso": "⚠️ Enregistrez votre salaire dans le panneau »️ pour voir le % engagé.",
         "pct_label": "% du salaire engagé le mois prochain",
         "sim_alerta": (
             "⚠️ ÊTES-VOUS SÛR DE VOULOIR FAIRE CETTE DÉPENSE ? {:.1f}% DE VOTRE SALAIRE SERA ENGAGÉ ; "
@@ -1568,7 +1568,7 @@ with aba_principal:
                 <div><div class="salario-label">{t.get('salario_comprometido','Salário Comprometido')}</div>
                      <div class="salario-value">--%</div></div>
                 <div style="font-size:48px;opacity:0.3;">💰</div></div>""", unsafe_allow_html=True)
-            st.caption(t.get("salario_zero_aviso","⚠️ Cadastre seu salário no painel ⚙️."))
+            st.caption(t.get("salario_zero_aviso","⚠️ Cadastre seu salário no painel »️."))
 
     # ── Formulário novo lançamento ─────────────
     st.markdown(f"### {t.get('novo_lancamento','➕ Novo Lançamento')}")
@@ -1627,7 +1627,7 @@ with aba_principal:
             else:
                 st.success(t.get("sim_ok","✅ Dentro do limite saudável."))
         elif valor_total > 0 and salario == 0:
-            st.caption(t.get("salario_zero_aviso","⚠️ Cadastre seu salário no painel ⚙️."))
+            st.caption(t.get("salario_zero_aviso","⚠️ Cadastre seu salário no painel »️."))
 
         col_btn, _ = st.columns([1, 3])
         with col_btn:
