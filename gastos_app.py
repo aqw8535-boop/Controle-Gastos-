@@ -1498,7 +1498,7 @@ try:
                         f'<div class="sticky-trial">'
                         f'<span style="color:rgba(196,181,253,0.6);font-size:11px;">🌱</span>'
                         f'<span style="color:rgba(196,181,253,0.85);">'
-                        f'Você está no seu <strong style="color:#c4b5fd;">{_dia_num_sticky}º dia</strong> '
+                        f'Você está no <strong style="color:#c4b5fd;">{_dia_num_sticky}º de 7 dias</strong> '
                         f'de teste gratuito &mdash; aproveite para organizar suas finanças com calma!'
                         f'</span>'
                         f'</div>'
