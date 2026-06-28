@@ -29,9 +29,7 @@ from gastei_auth import (
 st.set_page_config(page_title="Gastei", page_icon="💳", layout="wide")
 
 
-# ── BLINDAGEM ANTI-LOOP INFINITO OAUTH ──────────────────────────────────────
-# Intercepta os parâmetros na primeiríssima linha antes de qualquer renderização
-# ── BLINDAGEM ANTI-LOOP INFINITO OAUTH (VERSÃO COMPLETA E CORRIGIDA) ──────────
+# ── BLINDAGEM ANTI-LOOP INFINITO OAUTH (VERSÃO FINAL COM RUN_QUERY) ──────────
 _q_params = st.query_params
 
 if "code" in _q_params:
@@ -42,29 +40,32 @@ if "code" in _q_params:
     
     with st.spinner("Conectando sua conta Google..."):
         try:
+            # TRY 1: Tenta ir no Google buscar os dados do usuário usando o código da URL
             dados_usuario = google_exchange_code(_code)
             
-            # Valida se recebemos os dados direitinho
             if dados_usuario and isinstance(dados_usuario, dict) and "email" in dados_usuario:
-                usuario_id = upsert_usuario_oauth(
-                    email=dados_usuario["email"],
-                    nome=dados_usuario.get("name", "Usuário Google"),
-                    provedor="google"
-                )
                 
-                # Guarda as credenciais na sessão do app
-                st.session_state.usuario_id = usuario_id
-                st.session_state.usuario_email = dados_usuario["email"]
-                st.session_state.usuario_nome = dados_usuario.get("name", "Usuário Google")
+                # 🚀 CHAMADA CORRIGIDA: Passa a sua função de banco e o dicionário completo
+                # ⚠️ Lembrete: Se a sua função de banco se chamar 'execute_query' ou outro nome, mude o 'run_query' abaixo!
+                retorno_banco = upsert_usuario_oauth(run_query, dados_usuario)
                 
-                # Agora sim, recarrega o app já logado com sucesso!
-                st.rerun()
+                if retorno_banco:
+                    usuario_id, usuario_nome = retorno_banco
+                    
+                    # Salva os dados de verdade vindos do banco no session_state global
+                    st.session_state.usuario_id = usuario_id
+                    st.session_state.usuario_email = dados_usuario["email"]
+                    st.session_state.usuario_nome = usuario_nome
+                    
+                    # Força o recarregamento definitivo, agora LOGADO!
+                    st.rerun()
+                else:
+                    st.error("Erro ao registrar ou localizar sua conta no banco de dados.")
             else:
-                # Se o retorno foi inválido, avisa mas deixa o app seguir para a tela de login normal
                 st.error("Não foi possível recuperar seus dados do Google. Tente novamente.")
                 
         except Exception as e:
-            # Se estourar algum erro de conexão, mostra o erro na tela sem travar a interface
+            # TRY 2 (O Except dele): Se o Google ou o Banco explodirem, o erro cai aqui sem travar a tela
             st.error(f"Erro crítico na autenticação: {e}")
             
 # ─────────────────────────────────────────────
