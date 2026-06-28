@@ -917,25 +917,16 @@ def _smtp_send(cfg, dest, assunto, html):
     except Exception: pass
 
 def _job_emails_trial():
-    import datetime as dt
-    hoje = dt.date.today()
+    hoje = date.today()
     try:
         cfg = st.secrets.get("email", {})
         if not cfg: return
-        
-        # Se o aviso deve ser enviado 1 dia ANTES de expirar:
-        # Significa que a licença expira amanhã!
-        amanha = hoje + dt.timedelta(days=1)
-        
-        # Buscando direto na tabela certa com as colunas certas do print!
+        amanha = hoje + timedelta(days=1)
         rows = run_query(f"""
-            SELECT id, email, tipo_licenca, expira_em 
-            FROM licencas_ativas
-            WHERE tipo_licenca = 'trial' 
-              AND expira_em = '{amanha}'
+            SELECT id,nome,email FROM usuarios
+            WHERE status_assinatura='trial' AND aviso_d1_enviado=FALSE
+              AND (trial_inicio::date + interval '{TRIAL_DIAS-1} days')::date = '{amanha}'
         """, fetch=True)
-        
-        # ... resto do seu código de envio de e-mail ...
         for u in (rows or []):
             html = f"""<div style="font-family:sans-serif;max-width:500px;margin:auto;background:#1a1a2e;border-radius:16px;padding:36px;color:#e8e4ff;">
               <div style="text-align:center;font-size:48px;">⏰</div>
