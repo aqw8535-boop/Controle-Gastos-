@@ -729,18 +729,40 @@ def validar_token_sessao(token):
 #  PAYWALL (licenças manuais)
 # ═════════════════════════════════════════════
 @st.cache_data(ttl=300, show_spinner=False)
+from datetime import datetime
+
+@st.cache_data(ttl=60, show_spinner=False) # Diminuí o TTL para 1 minuto para testar mais rápido
 def verificar_status_licenca(email):
     try:
-        rows = run_query("SELECT * FROM licencas_ativas WHERE email=%s", (email.strip().lower(),), fetch=True)
-        if not rows: return False, "não_autorizado"
-        l = rows[0]
-        if l["tipo_licenca"] == "vitalicio": return True, "vitalicio"
-        if l["tipo_licenca"] in ("assinatura", "trial"):
-            if l["expira_em"] is None: return True, "assinatura_valida"
-            return (True,"assinatura_valida") if to_date(l["expira_em"]) >= date.today() else (False,"assinatura_expirada")
-        return False, "invalido"
-    except: return False, "erro"
-
+        # Puxamos a licença do usuário
+        rows = run_query("SELECT tipo_licenca, expira_em FROM licencas_ativas WHERE email=%s", (email.strip().lower(),), fetch=True)
+        
+        # Se não achou nenhuma linha, não tem licença nenhuma
+        if not rows: 
+            return False, "não_autorizado"
+            
+        dados_licenca = rows[0]
+        tipo = dados_licenca.get("tipo_licenca")
+        expira_em = dados_licenca.get("expira_em") # Pode vir como objeto date ou string
+        
+        # ── SE FOR TRIAL, VALIDA A DATA DE EXPIRAÇÃO ──
+        if tipo == "trial" and expira_em:
+            # Converte para string/date se necessário para comparar com hoje
+            if isinstance(expira_em, str):
+                data_expiracao = datetime.strptime(expira_em, "%Y-%m-%d").date()
+            else:
+                data_expiracao = expira_em # Se o psycopg2 já trouxer como datetime.date
+                
+            # Se a data de hoje passou da data de expiração, BLOQUEIA!
+            if datetime.now().date() > data_expiracao:
+                return False, "trial_expirado"
+                
+        # Se for vitalício ou o trial ainda estiver no prazo, libera!
+        return True, "autorizado"
+        
+    except Exception as e:
+        # Em caso de erro no banco, por segurança, joga um log mas não quebra o app
+        return False, f"erro_verificacao: {e}"
 # ═════════════════════════════════════════════
 #  RESET DE SENHA
 # ═════════════════════════════════════════════
