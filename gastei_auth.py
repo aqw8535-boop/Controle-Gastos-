@@ -54,19 +54,21 @@ APPLE_TOKEN_URL  = "https://appleid.apple.com/auth/token"
 #  SEÇÃO A — GOOGLE OAUTH
 # ══════════════════════════════════════════
 
-def google_get_auth_url(state: str) -> str:
-    """Gera a URL de autorização do Google."""
-    params = {
-        "client_id":     GOOGLE_CLIENT_ID,
-        "redirect_uri":  GOOGLE_REDIRECT,
-        "response_type": "code",
-        "scope":         "openid email profile",
-        "access_type":   "offline",
-        "state":         state,
-        "prompt":        "select_account",
-    }
-    return f"{GOOGLE_AUTH_URL}?{urlencode(params)}"
-
+def google_get_auth_url(state):
+    # Pega os dados dinamicamente do seu secrets
+    client_id = st.secrets["google_oauth"]["client_id"]
+    redirect_uri = st.secrets["google_oauth"]["redirect_uri"]
+    
+    # Monta a URL injetando a redirect_uri limpa do secrets
+    url = (
+        f"https://accounts.google.com/o/oauth2/v2/auth?"
+        f"client_id={client_id}&"
+        f"redirect_uri={redirect_uri}&"  # 👈 Deixa essa linha exatamente assim!
+        f"response_type=code&"
+        f"scope=openid%20email%20profile&"
+        f"state={state}"
+    )
+    return url
 
 def google_exchange_code(code: str) -> dict | None:
     """
