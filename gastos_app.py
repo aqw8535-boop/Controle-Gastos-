@@ -728,36 +728,48 @@ def validar_token_sessao(token):
 # ═════════════════════════════════════════════
 #  PAYWALL (licenças manuais)
 # ═════════════════════════════════════════════
-from datetime import datetime
-
-@st.cache_data(ttl=60, show_spinner=False) # Diminuí o TTL para 1 minuto para testar mais rápido
-    # 1. REMOVEMOS O CACHE temporariamente para testar sem interferência da memória
-def verificar_status_licenca(email):
+@st.cache_data(ttl=60, show_spinner=False)
+def verificar_status_licenca(email: str):
+    """
+    Retorna (acesso: bool, status: str, dias_restantes: int).
+    status pode ser: 'autorizado' | 'não_autorizado' | 'assinatura_expirada' | 'trial_ativo'
+    dias_restantes é populado quando status == 'trial_ativo', senão 0.
+    """
     try:
-        rows = run_query("SELECT tipo_licenca, expira_em FROM licencas_ativas WHERE email=%s", (email.strip().lower(),), fetch=True)
-        
-        if not rows: 
-            return False, "não_autorizado"
-            
-        dados_licenca = rows[0]
-        tipo = dados_licenca.get("tipo_licenca")
-        expira_em = dados_licenca.get("expira_em")
-        
-        if tipo == "trial" and expira_em:
-            import datetime as dt
-            if isinstance(expira_em, str):
-                data_expiracao = dt.datetime.strptime(expira_em, "%Y-%m-%d").date()
-            else:
-                data_expiracao = expira_em
-                
-            # Se hoje passou da data, retorna EXATAMENTE o que o seu app espera para bloquear:
-            if dt.date.today() > data_expiracao:
-                return False, "não_autorizado"
-                
-        return True, "autorizado"
-        
-    except Exception as e:
-        return False, "não_autorizado"
+        rows = run_query(
+            "SELECT tipo_licenca, expira_em FROM licencas_ativas WHERE email=%s",
+            (email.strip().lower(),), fetch=True)
+        if not rows:
+            return False, "não_autorizado", 0
+
+        dados  = rows[0]
+        tipo   = dados.get("tipo_licenca")
+        expira = dados.get("expira_em")
+
+        if tipo in ("vitalicio", "pago"):
+            return True, "autorizado", 999
+
+        if tipo == "assinatura":
+            if expira is None:
+                return True, "autorizado", 999
+            exp_d = to_date(expira)
+            if date.today() <= exp_d:
+                return True, "autorizado", (exp_d - date.today()).days
+            return False, "assinatura_expirada", 0
+
+        if tipo == "trial":
+            if expira is None:
+                return False, "não_autorizado", 0
+            exp_d = to_date(expira)
+            dias_rest = (exp_d - date.today()).days
+            if dias_rest >= 0:
+                return True, "trial_ativo", dias_rest
+            return False, "não_autorizado", 0
+
+        return False, "não_autorizado", 0
+
+    except Exception:
+        return False, "não_autorizado", 0
 # ═════════════════════════════════════════════
 #  RESET DE SENHA
 # ═════════════════════════════════════════════
@@ -821,18 +833,34 @@ def enviar_email_reset(destinatario, token):
 #  USUÁRIOS
 # ═════════════════════════════════════════════
 def criar_usuario(nome, email, senha, telefone=""):
-    # Usuários manuais precisam de licença prévia na licencas_ativas
-    ok, motivo = verificar_status_licenca(email)
-    if not ok:
+    """
+    Cria conta manual. Se o e-mail ainda não tem licença, cria um trial de 7 dias.
+    Se já tem licença ativa, usa ela. Se expirada, bloqueia.
+    """
+    email_clean = email.strip().lower()
+    ok, motivo, _ = verificar_status_licenca(email_clean)
+
+    # Bloqueia apenas assinaturas expiradas (trial expirado é tratado na autenticação)
+    if not ok and motivo == "assinatura_expirada":
         t_ = get_t()
-        msgs = {
-            "não_autorizado":   t_.get("não_autorizado", "Acesso Negado! Este e-mail não possui licença ativa."),
-            "assinatura_expirada": t_.get("assinatura_expirada", "Assinatura expirada! Renove para reativar."),
-        }
-        return False, msgs.get(motivo, "Licença inválida.")
+        return False, t_.get("assinatura_expirada", "Assinatura expirada! Renove para reativar.")
+
     try:
-        run_query("INSERT INTO usuarios (nome,email,senha,telefone) VALUES (%s,%s,%s,%s)",
-                  (nome.strip(), email.strip().lower(), hash_senha(senha), telefone.strip()))
+        run_query(
+            "INSERT INTO usuarios (nome, email, senha, telefone) VALUES (%s, %s, %s, %s)",
+            (nome.strip(), email_clean, hash_senha(senha.strip()), telefone.strip()))
+
+        # Se não havia licença, concede trial de 7 dias automaticamente
+        if not ok:
+            _expira = date.today() + timedelta(days=TRIAL_DIAS)
+            run_query("""
+                INSERT INTO licencas_ativas (email, tipo_licenca, expira_em)
+                VALUES (%s, 'trial', %s)
+                ON CONFLICT (email) DO NOTHING
+            """, (email_clean, _expira))
+            # Invalida cache para refletir a nova licença imediatamente
+            verificar_status_licenca.clear()
+
         return True, "ok"
     except psycopg2.errors.UniqueViolation:
         return False, "Este e-mail já está cadastrado."
@@ -841,7 +869,7 @@ def criar_usuario(nome, email, senha, telefone=""):
 
 def autenticar_usuario(email, senha):
     try:
-        ok, _ = verificar_status_licenca(email)
+        ok, _, _ = verificar_status_licenca(email)
         if not ok: return "bloqueado"
         rows = run_query("SELECT id,nome FROM usuarios WHERE email=%s AND senha=%s",
                          (email.strip().lower(), hash_senha(senha)), fetch=True)
@@ -1164,7 +1192,7 @@ if st.session_state.usuario_id is None:
                     if not email_login or not senha_login:
                         st.error(t.get("err_preencha_dados","Preencha e-mail e senha."))
                     else:
-                        resultado = autenticar_usuario(email_login, senha_login)
+                        resultado = autenticar_usuario(email_login.strip().lower(), senha_login.strip())
                         if resultado == "bloqueado":
                             st.error(t.get("err_bloqueado","🛑 Acesso Bloqueado!"))
                         elif resultado:
@@ -1250,12 +1278,18 @@ if st.session_state.usuario_id is None:
         with aba_cadastro:
             st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
             nome_cad   = st.text_input(t.get("input_nome","Seu nome"),         key="cad_nome",   placeholder="João Silva")
-            email_cad  = st.text_input(t.get("input_email","E-mail"),           key="cad_email",  placeholder="O mesmo e-mail usado na compra")
+            email_cad  = st.text_input(t.get("input_email","E-mail"),           key="cad_email",  placeholder="seu@email.com")
             tel_cad    = st.text_input(t.get("input_telefone","WhatsApp / Telefone"), key="cad_tel", placeholder="(67) 99999-9999")
             senha_cad  = st.text_input(t.get("input_senha","Senha"),     type="password", key="cad_senha",  placeholder="Mínimo 6 caracteres")
             senha_cad2 = st.text_input(t.get("input_confirmar_senha","Confirmar senha"), type="password", key="cad_senha2", placeholder="Repita a senha")
             st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
             if st.button(t.get("btn_criar_conta","Criar minha conta →"), key="btn_cadastro"):
+                # strip/lower em todos os campos de texto antes de qualquer validação
+                nome_cad   = nome_cad.strip()
+                email_cad  = email_cad.strip().lower()
+                tel_cad    = tel_cad.strip()
+                senha_cad  = senha_cad.strip()
+                senha_cad2 = senha_cad2.strip()
                 erros = []
                 if not all([nome_cad, email_cad, tel_cad, senha_cad, senha_cad2]):
                     erros.append(t.get("err_campos_vazios","Preencha todos os campos."))
@@ -1269,7 +1303,20 @@ if st.session_state.usuario_id is None:
                     ok, msg = criar_usuario(nome_cad, email_cad, senha_cad, tel_cad)
                     if ok: st.success(t.get("sucesso_conta_criada","✅ Conta criada! Faça login na aba ao lado."))
                     else:  st.error(msg)
-            st.markdown(f"""<div style='text-align:center;margin-top:16px;'>
+
+            # ── Divisor + Botão Google (para quem prefere 1 clique) ──
+            st.divider()
+            st.markdown(
+                "<p style='text-align:center;color:#6b7280;font-size:12px;margin-bottom:10px;'>"
+                "Prefere criar conta com 1 clique?</p>",
+                unsafe_allow_html=True)
+            _state_cad = _secrets.token_hex(16)
+            st.session_state.oauth_state = _state_cad
+            _url_google_cad = google_auth_url(_state_cad)
+            if _url_google_cad:
+                st.link_button("🔵  Criar conta com Google", url=_url_google_cad, use_container_width=True)
+
+            st.markdown(f"""<div style='text-align:center;margin-top:14px;'>
                 <a href="https://finatechlab.com/pagina-vendas-gastei/" target="_blank"
                    style="color:#64b5f6;font-size:12px;text-decoration:none;opacity:0.65;">
                     🛒 {t.get('link_vendas_planos','Ainda não comprou? Conheça os planos →')}</a></div>""",
@@ -1311,6 +1358,37 @@ with st.sidebar:
     if _smap[_ssel] != st.session_state.lang:
         st.session_state.lang = _smap[_ssel]; st.rerun()
     t = get_t()
+
+    # ── Contador acolhedor de trial ───────────
+    try:
+        _rows_lic = run_query(
+            "SELECT tipo_licenca, expira_em FROM licencas_ativas WHERE email="
+            "(SELECT email FROM usuarios WHERE id=%s)",
+            (uid,), fetch=True)
+        if _rows_lic:
+            _lic = _rows_lic[0]
+            if _lic.get("tipo_licenca") == "trial" and _lic.get("expira_em"):
+                _exp_sb  = to_date(_lic["expira_em"])
+                _dias_sb = (_exp_sb - date.today()).days
+                if _dias_sb >= 0:
+                    st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+                    if _dias_sb > 0:
+                        _dia_num = TRIAL_DIAS - _dias_sb + 1
+                        st.markdown(
+                            f"<div style='background:rgba(155,141,255,0.08);border:1px solid rgba(155,141,255,0.2);"
+                            f"border-radius:10px;padding:10px 14px;font-size:12px;color:#c4b5fd;line-height:1.55;'>"
+                            f"🌱 Olá! Você está no seu {_dia_num}º dia de teste gratuito. "
+                            f"Aproveite para organizar suas finanças com calma!</div>",
+                            unsafe_allow_html=True)
+                    else:
+                        st.markdown(
+                            "<div style='background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.25);"
+                            "border-radius:10px;padding:10px 14px;font-size:12px;color:#fde047;line-height:1.55;'>"
+                            "⏳ Seu período de teste termina hoje. Esperamos que o app esteja te ajudando "
+                            "a dominar seus gastos!</div>",
+                            unsafe_allow_html=True)
+    except Exception:
+        pass
 
     st.markdown("---")
     st.markdown(f"### {t.get('salario_titulo','💰 Meu Salário Mensal')}")
