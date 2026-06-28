@@ -206,50 +206,29 @@ def upsert_usuario_oauth(run_query_fn, dados: dict) -> tuple[int, str] | None:
     avatar      = dados["avatar_url"]
 
     try:
-        # 1. Busca por provider_id
-        rows = run_query_fn(
-            "SELECT id, nome FROM usuarios WHERE provedor=%s AND provider_id=%s",
-            (provedor, provider_id), fetch=True
-        )
-        if rows:
-            return rows[0]["id"], rows[0]["nome"]
-
-        # 2. Busca por e-mail (conta manual pré-existente)
-        rows = run_query_fn(
-            "SELECT id, nome FROM usuarios WHERE email=%s",
-            (email,), fetch=True
-        )
-        if rows:
-            run_query_fn(
-                "UPDATE usuarios SET provedor=%s, provider_id=%s, avatar_url=%s WHERE id=%s",
-                (provedor, provider_id, avatar, rows[0]["id"])
-            )
-            return rows[0]["id"], rows[0]["nome"]
-
-        # 3. Cria usuário novo em trial
-        run_query_fn("""
-            INSERT INTO usuarios
-              (nome, email, senha, telefone, provedor, provider_id, avatar_url,
-               status_assinatura, trial_inicio, salario)
-            VALUES (%s, %s, '', '', %s, %s, %s, 'trial', NOW(), 0)
-        """, (nome, email, provedor, provider_id, avatar))
-
-        rows = run_query_fn("SELECT id FROM usuarios WHERE email=%s", (email,), fetch=True)
-        if rows:
-            uid_novo = rows[0]["id"]
-            _registrar_licenca_trial(run_query_fn, email, uid_novo)
-            return uid_novo, nome
-
-        return None
-
-    except Exception as e:
-        st.error(f"❌ Erro ao registrar usuário OAuth: {e}")
-        return None
-
-
-def _registrar_licenca_trial(run_query_fn, email: str, usuario_id: int):
-    """Registra o trial na tabela licencas_ativas (compatibilidade com sistema existente)."""
-    expira = date.today() + timedelta(days=TRIAL_DIAS)
+            dados_usuario = google_exchange_code(_code)
+            
+            if dados_usuario and isinstance(dados_usuario, dict) and "email" in dados_usuario:
+                
+                # 🚀 CORREÇÃO AQUI: Passa a sua função de query (geralmente chamada de run_query ou executar_query)
+                # e o dicionário de dados inteiro. Ela vai retornar o ID e o Nome do usuário.
+                retorno_banco = upsert_usuario_oauth(run_query, dados_usuario)
+                
+                if retorno_banco:
+                    usuario_id, usuario_nome = retorno_banco
+                    
+                    # Salva os dados corretos no session_state global
+                    st.session_state.usuario_id = usuario_id
+                    st.session_state.usuario_email = dados_usuario["email"]
+                    st.session_state.usuario_nome = usuario_nome
+                    
+                    # Recarrega a página de forma limpa, agora 100% LOGADO!
+                    st.rerun()
+                else:
+                    st.error("Erro ao registrar ou localizar sua conta no banco de dados.")
+                
+        except Exception as e:
+            st.error(f"Erro crítico na autenticação: {e}")
     try:
         run_query_fn("""
             INSERT INTO licencas_ativas
