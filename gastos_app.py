@@ -349,6 +349,19 @@ def get_t():
 # ─────────────────────────────────────────────
 st.markdown("""
 <style>
+/* Força a aparição do botão de ABRIR a sidebar quando recolhida */
+button[aria-label="Expand sidebar"], 
+[data-testid="stSidebarHeader"] button,
+.st-emotion-cache-1m4mubm, 
+[data-testid="stHeader"] button {
+    display: flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    z-index: 999999 !important;
+    color: #8A4FFF !important; /* Coloquei uma cor roxa para destacar bem e você achar ele */
+    background-color: rgba(255, 255, 255, 0.1) !important; /* Um fundo sutil para dar contraste */
+    border-radius: 8px !important;
+}
 @import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
 html, body, [class*="css"] { font-family: 'Sora', sans-serif; }
 .stApp { background: linear-gradient(135deg, #0f0f1a 0%, #1a1a2e 50%, #16213e 100%); min-height: 100vh; }
