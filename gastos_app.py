@@ -31,38 +31,41 @@ st.set_page_config(page_title="Gastei", page_icon="💳", layout="wide")
 
 # ── BLINDAGEM ANTI-LOOP INFINITO OAUTH ──────────────────────────────────────
 # Intercepta os parâmetros na primeiríssima linha antes de qualquer renderização
+# ── BLINDAGEM ANTI-LOOP INFINITO OAUTH (VERSÃO COMPLETA E CORRIGIDA) ──────────
 _q_params = st.query_params
 
 if "code" in _q_params:
     _code = _q_params["code"]
     
-    # 1. Executa a troca imediatamente limpando a UI para o usuário saber que está logando
+    # 🚀 Limpa a URL IMEDIATAMENTE para matar o loop na raiz
+    st.query_params.clear()
+    
     with st.spinner("Conectando sua conta Google..."):
         try:
             dados_usuario = google_exchange_code(_code)
             
-            if dados_usuario and "email" in dados_usuario:
-                # 2. Registra ou busca o cara no banco
+            # Valida se recebemos os dados direitinho
+            if dados_usuario and isinstance(dados_usuario, dict) and "email" in dados_usuario:
                 usuario_id = upsert_usuario_oauth(
                     email=dados_usuario["email"],
                     nome=dados_usuario.get("name", "Usuário Google"),
                     provedor="google"
                 )
                 
-                # 3. Salva no session_state global
+                # Guarda as credenciais na sessão do app
                 st.session_state.usuario_id = usuario_id
                 st.session_state.usuario_email = dados_usuario["email"]
                 st.session_state.usuario_nome = dados_usuario.get("name", "Usuário Google")
                 
-                # 🚀 SINAL VERMELHO PRO LOOP: Deleta de vez os parâmetros da URL
-                st.query_params.clear()
-                
-                # 4. Força o recarregamento definitivo já autenticado
+                # Agora sim, recarrega o app já logado com sucesso!
                 st.rerun()
+            else:
+                # Se o retorno foi inválido, avisa mas deixa o app seguir para a tela de login normal
+                st.error("Não foi possível recuperar seus dados do Google. Tente novamente.")
+                
         except Exception as e:
-            st.error(f"Erro na autenticação social: {e}")
-            st.query_params.clear()
-            st.stop()
+            # Se estourar algum erro de conexão, mostra o erro na tela sem travar a interface
+            st.error(f"Erro crítico na autenticação: {e}")
             
 # ─────────────────────────────────────────────
 #  PWA — META TAGS
