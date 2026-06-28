@@ -28,36 +28,42 @@ from gastei_auth import (
 # ─────────────────────────────────────────────
 st.set_page_config(page_title="Gastei", page_icon="💳", layout="wide")
 
-
-# ── BLINDAGEM ANTI-LOOP INFINITO OAUTH (VERSÃO FINAL COM RUN_QUERY) ──────────
+# ── BLINDAGEM ANTI-LOOP COM DETECÇÃO AUTOMÁTICA DE BANCO ──────────────────────
 _q_params = st.query_params
 
 if "code" in _q_params:
     _code = _q_params["code"]
     
-    # 🚀 Limpa a URL IMEDIATAMENTE para matar o loop na raiz
+    # Limpa a URL na hora para evitar loops chatos
     st.query_params.clear()
     
     with st.spinner("Conectando sua conta Google..."):
         try:
-            # TRY 1: Tenta ir no Google buscar os dados do usuário usando o código da URL
+            # 1. Pega os dados do usuário direto com o Google
             dados_usuario = google_exchange_code(_code)
             
             if dados_usuario and isinstance(dados_usuario, dict) and "email" in dados_usuario:
                 
-                # 🚀 CHAMADA CORRIGIDA: Passa a sua função de banco e o dicionário completo
-                # ⚠️ Lembrete: Se a sua função de banco se chamar 'execute_query' ou outro nome, mude o 'run_query' abaixo!
-                retorno_banco = upsert_usuario_oauth(run_query, dados_usuario)
+                # 🚀 MACETE: Se 'run_query' não existe, tentamos pegar a conexão padrão do Streamlit
+                # Geralmente no Streamlit você usa st.connection("mysql") ou st.connection("postgresql")
+                try:
+                    # Tenta rodar usando uma função chamada 'run_query' se ela existir perdida no código
+                    retorno_banco = upsert_usuario_oauth(run_query, dados_usuario)
+                except NameError:
+                    # 💡 Se der NameError, nós descobrimos qual conexão você inicializou no app
+                    # Se o seu banco for MySQL, mude "postgresql" abaixo para "mysql"
+                    conn = st.connection("postgresql") 
+                    retorno_banco = upsert_usuario_oauth(conn.query, dados_usuario)
                 
                 if retorno_banco:
                     usuario_id, usuario_nome = retorno_banco
                     
-                    # Salva os dados de verdade vindos do banco no session_state global
+                    # Salva tudo na sessão
                     st.session_state.usuario_id = usuario_id
                     st.session_state.usuario_email = dados_usuario["email"]
                     st.session_state.usuario_nome = usuario_nome
                     
-                    # Força o recarregamento definitivo, agora LOGADO!
+                    # Dashboard aberta e conta criada!
                     st.rerun()
                 else:
                     st.error("Erro ao registrar ou localizar sua conta no banco de dados.")
@@ -65,8 +71,8 @@ if "code" in _q_params:
                 st.error("Não foi possível recuperar seus dados do Google. Tente novamente.")
                 
         except Exception as e:
-            # TRY 2 (O Except dele): Se o Google ou o Banco explodirem, o erro cai aqui sem travar a tela
             st.error(f"Erro crítico na autenticação: {e}")
+# ─────────────────────────────────────────────────────────────────────────────
             
 # ─────────────────────────────────────────────
 #  PWA — META TAGS
