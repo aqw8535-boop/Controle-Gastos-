@@ -924,8 +924,7 @@ def _job_emails_trial():
         amanha = hoje + timedelta(days=1)
         rows = run_query(f"""
             SELECT id,email,tipo_licenca,expira_em FROM licencas_ativas
-            WHERE tipo_licenca='trial' AND aviso_d1_enviado=FALSE 
-       #Corrigindo base ^ 
+            WHERE tipo_licenca='trial' #testando"trava de funcao"-->AND aviso_d1_enviado=FALSE 
               AND (trial_inicio::date + interval '{TRIAL_DIAS-1} days')::date = '{amanha}'
         """, fetch=True)
         for u in (rows or []):
