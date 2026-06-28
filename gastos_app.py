@@ -728,36 +728,6 @@ def get_pool():
         sslmode="require", connect_timeout=10,
     )
 
-def run_query(sql: str, params=None, fetch=False):
-    pool = get_pool()
-    conn = pool.getconn()
-    try:
-        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(sql, params or ())
-            if fetch:
-                rows = cur.fetchall()
-                conn.commit()
-                return rows
-            conn.commit()
-    except psycopg2.OperationalError:
-        try: pool.putconn(conn, close=True)
-        except: pass
-        conn = pool.getconn()
-        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(sql, params or ())
-            if fetch:
-                rows = cur.fetchall()
-                conn.commit()
-                return rows
-            conn.commit()
-    except Exception:
-        try: conn.rollback()
-        except: pass
-        raise
-    finally:
-        try: pool.putconn(conn)
-        except: pass
-
 # ── BLINDAGEM OAUTH (COLE LOGO PERTO DA VERIFICAR_STATUS_LICENCA) ──────────────
 _q_params = st.query_params
 
@@ -799,6 +769,38 @@ if "code" in _q_params:
 # O seu código original continua aqui embaixo...
 # @st.cache_data(ttl=300, show_spinner=False)
 # def verificar_status_licenca(email):
+
+
+def run_query(sql: str, params=None, fetch=False):
+    pool = get_pool()
+    conn = pool.getconn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(sql, params or ())
+            if fetch:
+                rows = cur.fetchall()
+                conn.commit()
+                return rows
+            conn.commit()
+    except psycopg2.OperationalError:
+        try: pool.putconn(conn, close=True)
+        except: pass
+        conn = pool.getconn()
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(sql, params or ())
+            if fetch:
+                rows = cur.fetchall()
+                conn.commit()
+                return rows
+            conn.commit()
+    except Exception:
+        try: conn.rollback()
+        except: pass
+        raise
+    finally:
+        try: pool.putconn(conn)
+        except: pass
+
 
 # ─────────────────────────────────────────────
 #  INIT DB
