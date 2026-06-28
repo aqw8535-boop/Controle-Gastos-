@@ -28,52 +28,6 @@ from gastei_auth import (
 # ─────────────────────────────────────────────
 st.set_page_config(page_title="Gastei", page_icon="💳", layout="wide")
 
-# ── BLINDAGEM ANTI-LOOP COM DETECÇÃO AUTOMÁTICA DE BANCO ──────────────────────
-_q_params = st.query_params
-
-if "code" in _q_params:
-    _code = _q_params["code"]
-    
-    # Limpa a URL na hora para evitar loops chatos
-    st.query_params.clear()
-    
-    with st.spinner("Conectando sua conta Google..."):
-        try:
-            # 1. Pega os dados do usuário direto com o Google
-            dados_usuario = google_exchange_code(_code)
-            
-            if dados_usuario and isinstance(dados_usuario, dict) and "email" in dados_usuario:
-                
-                # 🚀 MACETE: Se 'run_query' não existe, tentamos pegar a conexão padrão do Streamlit
-                # Geralmente no Streamlit você usa st.connection("mysql") ou st.connection("postgresql")
-                try:
-                    # Tenta rodar usando uma função chamada 'run_query' se ela existir perdida no código
-                    retorno_banco = upsert_usuario_oauth(run_query, dados_usuario)
-                except NameError:
-                    # 💡 Se der NameError, nós descobrimos qual conexão você inicializou no app
-                    # Se o seu banco for MySQL, mude "postgresql" abaixo para "mysql"
-                    conn = st.connection("postgresql") 
-                    retorno_banco = upsert_usuario_oauth(conn.query, dados_usuario)
-                
-                if retorno_banco:
-                    usuario_id, usuario_nome = retorno_banco
-                    
-                    # Salva tudo na sessão
-                    st.session_state.usuario_id = usuario_id
-                    st.session_state.usuario_email = dados_usuario["email"]
-                    st.session_state.usuario_nome = usuario_nome
-                    
-                    # Dashboard aberta e conta criada!
-                    st.rerun()
-                else:
-                    st.error("Erro ao registrar ou localizar sua conta no banco de dados.")
-            else:
-                st.error("Não foi possível recuperar seus dados do Google. Tente novamente.")
-                
-        except Exception as e:
-            st.error(f"Erro crítico na autenticação: {e}")
-# ─────────────────────────────────────────────────────────────────────────────
-            
 # ─────────────────────────────────────────────
 #  PWA — META TAGS
 # ─────────────────────────────────────────────
@@ -803,6 +757,48 @@ def run_query(sql: str, params=None, fetch=False):
     finally:
         try: pool.putconn(conn)
         except: pass
+
+# ── BLINDAGEM OAUTH (COLE LOGO PERTO DA VERIFICAR_STATUS_LICENCA) ──────────────
+_q_params = st.query_params
+
+if "code" in _q_params:
+    _code = _q_params["code"]
+    
+    # Limpa a URL na hora para matar loops
+    st.query_params.clear()
+    
+    with st.spinner("Conectando sua conta Google..."):
+        try:
+            # 1. Pega os dados do perfil do usuário no Google
+            dados_usuario = google_exchange_code(_code)
+            
+            if dados_usuario and isinstance(dados_usuario, dict) and "email" in dados_usuario:
+                
+                # 🚀 AGORA VAI! Como está no lugar certo, ele vai reconhecer a run_query perfeitamente!
+                retorno_banco = upsert_usuario_oauth(run_query, dados_usuario)
+                
+                if retorno_banco:
+                    usuario_id, usuario_nome = retorno_banco
+                    
+                    # Salva os dados na sessão global
+                    st.session_state.usuario_id = usuario_id
+                    st.session_state.usuario_email = dados_usuario["email"]
+                    st.session_state.usuario_nome = usuario_nome
+                    
+                    # Entra na Dashboard logado com sucesso!
+                    st.rerun()
+                else:
+                    st.error("Erro ao registrar ou localizar sua conta no banco de dados.")
+            else:
+                st.error("Não foi possível recuperar seus dados do Google. Tente novamente.")
+                
+        except Exception as e:
+            st.error(f"Erro crítico na autenticação: {e}")
+# ─────────────────────────────────────────────────────────────────────────────
+
+# O seu código original continua aqui embaixo...
+# @st.cache_data(ttl=300, show_spinner=False)
+# def verificar_status_licenca(email):
 
 # ─────────────────────────────────────────────
 #  INIT DB
