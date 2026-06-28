@@ -122,7 +122,7 @@ IDIOMAS = {
         "btn_pagar": "💸 Pagar Parcela", "btn_quitar": "🏁 Quitar Tudo", "btn_excluir": "🗑️ Excluir",
         "salario_titulo": "💰 Meu Salário Mensal", "salario_input": "Salário Mensal Líquido (R$)",
         "salario_btn": "💾 Salvar Salário", "salario_salvo": "✅ Salário atualizado!",
-        "salario_zero_aviso": "⚠️ Cadastre seu salário no painel ⚙️ para ver o % comprometido.",
+        "salario_zero_aviso": "⚠️ Cadastre seu salário no painel '[»]' no canto superior esquerdo para ver o % comprometido.",
         "pct_label": "% do salário comprometido no próximo mês",
         "sim_alerta": (
             "⚠️ TEM CERTEZA QUE QUER FAZER ESTA CONTA? {:.1f}% DO SEU SALÁRIO ESTARÁ COMPROMETIDO; "
