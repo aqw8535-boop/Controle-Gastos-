@@ -731,37 +731,33 @@ def validar_token_sessao(token):
 from datetime import datetime
 
 @st.cache_data(ttl=60, show_spinner=False) # Diminuí o TTL para 1 minuto para testar mais rápido
+    # 1. REMOVEMOS O CACHE temporariamente para testar sem interferência da memória
 def verificar_status_licenca(email):
     try:
-        # Puxamos a licença do usuário
         rows = run_query("SELECT tipo_licenca, expira_em FROM licencas_ativas WHERE email=%s", (email.strip().lower(),), fetch=True)
         
-        # Se não achou nenhuma linha, não tem licença nenhuma
         if not rows: 
             return False, "não_autorizado"
             
         dados_licenca = rows[0]
         tipo = dados_licenca.get("tipo_licenca")
-        expira_em = dados_licenca.get("expira_em") # Pode vir como objeto date ou string
+        expira_em = dados_licenca.get("expira_em")
         
-        # ── SE FOR TRIAL, VALIDA A DATA DE EXPIRAÇÃO ──
         if tipo == "trial" and expira_em:
-            # Converte para string/date se necessário para comparar com hoje
+            import datetime as dt
             if isinstance(expira_em, str):
-                data_expiracao = datetime.strptime(expira_em, "%Y-%m-%d").date()
+                data_expiracao = dt.datetime.strptime(expira_em, "%Y-%m-%d").date()
             else:
-                data_expiracao = expira_em # Se o psycopg2 já trouxer como datetime.date
+                data_expiracao = expira_em
                 
-            # Se a data de hoje passou da data de expiração, BLOQUEIA!
-            if datetime.now().date() > data_expiracao:
-                return False, "trial_expirado"
+            # Se hoje passou da data, retorna EXATAMENTE o que o seu app espera para bloquear:
+            if dt.date.today() > data_expiracao:
+                return False, "não_autorizado"
                 
-        # Se for vitalício ou o trial ainda estiver no prazo, libera!
         return True, "autorizado"
         
     except Exception as e:
-        # Em caso de erro no banco, por segurança, joga um log mas não quebra o app
-        return False, f"erro_verificacao: {e}"
+        return False, "não_autorizado"
 # ═════════════════════════════════════════════
 #  RESET DE SENHA
 # ═════════════════════════════════════════════
