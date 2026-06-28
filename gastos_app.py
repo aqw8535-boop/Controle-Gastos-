@@ -1393,38 +1393,11 @@ def calcular_gasto_mensal(df):
     par = df_a[df_a["recorrente"].astype(int) == 0]
     return float(rec + (par["valor_total"] / par["parcelas_totais"].replace(0, 1)).sum())
 
-# ═════════════════════════════════════════════
-#  VALIDAÇÃO TOKEN DE SESSÃO NA URL + OAUTH CALLBACK
-# ═════════════════════════════════════════════
-if st.session_state.usuario_id is None:
+# ═════════════════════════════════════════════════════════════════════════════
+#   VALIDAÇÃO TOKEN DE SESSÃO NA URL (APENAS LEITURA DE SESSÃO EXISTENTE)
+# ═════════════════════════════════════════════════════════════════════════════
+if st.session_state.get("usuario_id") is None:
     params = st.query_params
-
-    # ── Callback Google OAuth ──
-    if "code" in params and "state" in params and params.get("state", "") == st.session_state.get("oauth_state", "X"):
-        code = params["code"]
-        dados = google_exchange_code(code)
-        if dados:
-            resultado = upsert_usuario_oauth(run_query, dados)
-            if resultado:
-                st.session_state.usuario_id   = resultado[0]
-                st.session_state.usuario_nome = resultado[1]
-                st.query_params.clear()
-                st.query_params["s"] = gerar_token_sessao(resultado[0])
-                st.rerun()
-
-    # ── Callback Apple Sign-In ──
-    if "apple_code" in params:
-        code = params["apple_code"]
-        id_token = params.get("apple_id_token", "")
-        dados = apple_exchange_code(code, id_token)
-        if dados:
-            resultado = upsert_usuario_oauth(run_query, dados)
-            if resultado:
-                st.session_state.usuario_id   = resultado[0]
-                st.session_state.usuario_nome = resultado[1]
-                st.query_params.clear()
-                st.query_params["s"] = gerar_token_sessao(resultado[0])
-                st.rerun()
 
     # ── Token de sessão normal (existente) ──
     token_param = params.get("s", None)
@@ -1432,13 +1405,17 @@ if st.session_state.usuario_id is None:
         uid_val = validar_token_sessao(token_param)
         if uid_val:
             try:
-                rows = run_query("SELECT id,nome FROM usuarios WHERE id=%s", (uid_val,), fetch=True)
-                if rows:
-                    st.session_state.usuario_id   = rows[0]["id"]
-                    st.session_state.usuario_nome = rows[0]["nome"]
-                else:
-                    st.query_params.clear()
-            except: pass
+                # Como a run_query ainda não foi criada aqui no topo, 
+                # usamos uma verificação segura. Se ela não existir, o bloco de baixo trata o login.
+                if 'run_query' in globals():
+                    rows = run_query("SELECT id,nome FROM usuarios WHERE id=%s", (uid_val,), fetch=True)
+                    if rows:
+                        st.session_state.usuario_id   = rows[0]["id"]
+                        st.session_state.usuario_nome = rows[0]["nome"]
+                    else:
+                        st.query_params.clear()
+            except: 
+                pass
         else:
             st.query_params.clear()
 
