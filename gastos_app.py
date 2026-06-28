@@ -1273,7 +1273,7 @@ if st.session_state.usuario_id is None:
                 <a href="https://finatechlab.com/pagina-vendas-gastei/" target="_blank"
                    style="color:#64b5f6;font-size:12px;text-decoration:none;opacity:0.65;">
                     🛒 {t.get('link_vendas_planos','Ainda não comprou? Conheça os planos →')}</a></div>""",
-                    print: ("Ei, sabia que pode acessar gratuítamente por 7 dias se voltar e entrar com a sua conta do Google?")
+                print:("Ei, sabia que pode acessar gratuítamente por 7 dias se voltar e entrar com a sua conta do Google?")
                 unsafe_allow_html=True)
 
     st.stop()
