@@ -472,10 +472,51 @@ label { color:#a0aec0 !important; font-size:13px !important; font-weight:600 !im
 .blq-wa:hover { opacity:1; }
 hr { border-color:rgba(255,255,255,0.07) !important; margin:28px 0 !important; }
 #MainMenu, footer, header { visibility: hidden; }
-.block-container { padding-top: 2rem; padding-bottom: 2rem; max-width: 1100px; }
+.block-container { padding-top: 3.2rem; padding-bottom: 2rem; max-width: 1100px; }
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: rgba(155,141,255,0.4); border-radius: 3px; }
+
+/* ── Ressuscita botão de reabrir sidebar ── */
+[data-testid="stSidebarCollapseButton"] {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    z-index: 999999 !important;
+    left: 10px !important;
+}
+[data-testid="collapsedControl"] {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    z-index: 999999 !important;
+}
+
+/* ── Sticky trial banner ── */
+.sticky-trial {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 99998;
+    padding: 7px 24px;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.4;
+    letter-spacing: 0.02em;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid rgba(155,141,255,0.15);
+    background: rgba(15, 15, 30, 0.72);
+}
+.sticky-trial.hoje {
+    background: rgba(20, 16, 36, 0.78);
+    border-bottom-color: rgba(251,191,36,0.2);
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -1404,7 +1445,7 @@ with st.sidebar:
 t = get_t()
 
 # ── Header ───────────────────────────────────
-col_titulo, col_usuario, col_pref, col_logout = st.columns([5, 2, 0.6, 0.8])
+col_titulo, col_usuario, col_logout = st.columns([5, 2.4, 0.8])
 with col_titulo:
     st.markdown("# GASTEI ⚡")
     st.markdown(f"<p style='color:#6b7280;margin-top:-12px;margin-bottom:28px;'>{t.get('app_subtitle','')}</p>",
@@ -1413,12 +1454,6 @@ with col_usuario:
     st.markdown(f"<div style='text-align:right;padding-top:18px;font-size:13px;color:#9ca3af;'>"
                 f"{t.get('ola','Olá')}, <strong style='color:#c4b5fd'>{st.session_state.usuario_nome}</strong> 👋</div>",
                 unsafe_allow_html=True)
-with col_pref:
-    st.markdown("<div style='padding-top:14px'></div>", unsafe_allow_html=True)
-    st.markdown('<div class="pref-btn">', unsafe_allow_html=True)
-    if st.button("⚙️", key="btn_pref_toggle"):
-        st.session_state.pref_aberto = not st.session_state.pref_aberto; st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
 with col_logout:
     st.markdown("<div style='padding-top:14px'></div>", unsafe_allow_html=True)
     st.markdown('<div class="logout-btn">', unsafe_allow_html=True)
@@ -1445,35 +1480,42 @@ if _trial["status"] == "trial" and _trial.get("dias_restantes", 999) <= 2:
       </a>
     </div>""", unsafe_allow_html=True)
 
-# ── Painel ⚙️ ────────────────────────────────
-if st.session_state.pref_aberto:
-    st.markdown('<div class="pref-panel">', unsafe_allow_html=True)
-    _pc1, _pc2, _pc3 = st.columns([1.2, 1.5, 0.6])
-    with _pc1:
-        st.markdown(f"<p style='color:#9b8dff;font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:6px;'>{t.get('idioma_label','🌐 Idioma')}</p>",
-                    unsafe_allow_html=True)
-        _pmap = {"🇧🇷 Português": "PT", "🇺🇸 English": "EN", "🇫🇷 Français": "FR"}
-        _psel = st.radio("lang_panel", options=list(_pmap.keys()),
-                         index=list(_pmap.values()).index(st.session_state.lang),
-                         key="lang_radio_panel", label_visibility="collapsed")
-        if _pmap[_psel] != st.session_state.lang:
-            st.session_state.lang = _pmap[_psel]; st.rerun()
-        t = get_t()
-    with _pc2:
-        st.markdown(f"<p style='color:#9b8dff;font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:6px;'>💰 {t.get('salario_titulo','Salário')}</p>",
-                    unsafe_allow_html=True)
-        _sal_p = st.number_input(
-            t.get("salario_input","Salário"), min_value=0.0, step=100.0, format="%.2f",
-            value=float(st.session_state.salario), key="sal_panel", label_visibility="collapsed"
-        )
-        if st.button(t.get("salario_btn","💾 Salvar Salário"), key="btn_sal_panel"):
-            if salvar_salario_db(uid, _sal_p):
-                st.success(t.get("salario_salvo","✅ Salário atualizado!"))
-    with _pc3:
-        st.markdown("<div style='padding-top:26px'></div>", unsafe_allow_html=True)
-        if st.button(f"✕ {t.get('pref_fechar','Fechar')}", key="btn_pref_close"):
-            st.session_state.pref_aberto = False; st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
+# ── Sticky trial banner (fixo no topo, acompanha scroll) ─────────────────────
+try:
+    _rows_sticky = run_query(
+        "SELECT tipo_licenca, expira_em FROM licencas_ativas WHERE email="
+        "(SELECT email FROM usuarios WHERE id=%s)",
+        (uid,), fetch=True)
+    if _rows_sticky:
+        _sl = _rows_sticky[0]
+        if _sl.get("tipo_licenca") == "trial" and _sl.get("expira_em"):
+            _exp_sticky  = to_date(_sl["expira_em"])
+            _dias_sticky = (_exp_sticky - date.today()).days
+            if _dias_sticky >= 0:
+                _dia_num_sticky = TRIAL_DIAS - _dias_sticky + 1
+                if _dias_sticky > 0:
+                    _sticky_html = (
+                        f'<div class="sticky-trial">'
+                        f'<span style="color:rgba(196,181,253,0.6);font-size:11px;">🌱</span>'
+                        f'<span style="color:rgba(196,181,253,0.85);">'
+                        f'Você está no seu <strong style="color:#c4b5fd;">{_dia_num_sticky}º dia</strong> '
+                        f'de teste gratuito &mdash; aproveite para organizar suas finanças com calma!'
+                        f'</span>'
+                        f'</div>'
+                    )
+                else:
+                    _sticky_html = (
+                        f'<div class="sticky-trial hoje">'
+                        f'<span style="color:rgba(253,224,71,0.6);font-size:11px;">⏳</span>'
+                        f'<span style="color:rgba(253,224,71,0.85);">'
+                        f'Seu período de teste <strong style="color:#fde047;">termina hoje</strong> '
+                        f'&mdash; esperamos que o app esteja te ajudando a dominar seus gastos!'
+                        f'</span>'
+                        f'</div>'
+                    )
+                st.markdown(_sticky_html, unsafe_allow_html=True)
+except Exception:
+    pass
 
 # ── Abas ─────────────────────────────────────
 aba_principal, aba_feedback = st.tabs([t.get("aba_gastos","📊 Meus Gastos"), t.get("aba_feedback","💬 Feedbacks")])
