@@ -727,50 +727,6 @@ def get_pool():
         password=cfg["password"], port=cfg.get("port", 5432),
         sslmode="require", connect_timeout=10,
     )
-
-# ── BLINDAGEM OAUTH (COLE LOGO PERTO DA VERIFICAR_STATUS_LICENCA) ──────────────
-_q_params = st.query_params
-
-if "code" in _q_params:
-    _code = _q_params["code"]
-    
-    # Limpa a URL na hora para matar loops
-    st.query_params.clear()
-    
-    with st.spinner("Conectando sua conta Google..."):
-        try:
-            # 1. Pega os dados do perfil do usuário no Google
-            dados_usuario = google_exchange_code(_code)
-            
-            if dados_usuario and isinstance(dados_usuario, dict) and "email" in dados_usuario:
-                
-                # 🚀 AGORA VAI! Como está no lugar certo, ele vai reconhecer a run_query perfeitamente!
-                retorno_banco = upsert_usuario_oauth(run_query, dados_usuario)
-                
-                if retorno_banco:
-                    usuario_id, usuario_nome = retorno_banco
-                    
-                    # Salva os dados na sessão global
-                    st.session_state.usuario_id = usuario_id
-                    st.session_state.usuario_email = dados_usuario["email"]
-                    st.session_state.usuario_nome = usuario_nome
-                    
-                    # Entra na Dashboard logado com sucesso!
-                    st.rerun()
-                else:
-                    st.error("Erro ao registrar ou localizar sua conta no banco de dados.")
-            else:
-                st.error("Não foi possível recuperar seus dados do Google. Tente novamente.")
-                
-        except Exception as e:
-            st.error(f"Erro crítico na autenticação: {e}")
-# ─────────────────────────────────────────────────────────────────────────────
-
-# O seu código original continua aqui embaixo...
-# @st.cache_data(ttl=300, show_spinner=False)
-# def verificar_status_licenca(email):
-
-
 def run_query(sql: str, params=None, fetch=False):
     pool = get_pool()
     conn = pool.getconn()
@@ -801,6 +757,43 @@ def run_query(sql: str, params=None, fetch=False):
         try: pool.putconn(conn)
         except: pass
 
+# ── BLINDAGEM OAUTH CORRIGIDA (SEM ERRO DE EMAIL) ────────────────────────────
+_q_params = st.query_params
+
+if "code" in _q_params:
+    _code = _q_params["code"]
+    
+    # Limpa a URL na hora para matar loops
+    st.query_params.clear()
+    
+    with st.spinner("Conectando sua conta Google..."):
+        try:
+            # 1. Pega os dados do perfil do usuário no Google
+            dados_usuario = google_exchange_code(_code)
+            
+            if dados_usuario and isinstance(dados_usuario, dict) and "email" in dados_usuario:
+                
+                # 🚀 AGORA SIM! Passa a run_query e o dicionário completo 'dados_usuario'
+                retorno_banco = upsert_usuario_oauth(run_query, dados_usuario)
+                
+                if retorno_banco:
+                    usuario_id, usuario_nome = retorno_banco
+                    
+                    # Salva os dados na sessão global do Streamlit
+                    st.session_state.usuario_id = usuario_id
+                    st.session_state.usuario_email = dados_usuario["email"]
+                    st.session_state.usuario_nome = usuario_nome
+                    
+                    # Entra na Dashboard logado com sucesso!
+                    st.rerun()
+                else:
+                    st.error("Erro ao registrar ou localizar sua conta no banco de dados.")
+            else:
+                st.error("Não foi possível recuperar seus dados do Google. Tente novamente.")
+                
+        except Exception as e:
+            st.error(f"Erro crítico na autenticação: {e}")
+# ─────────────────────────────────────────────────────────────────────────────
 
 # ─────────────────────────────────────────────
 #  INIT DB
