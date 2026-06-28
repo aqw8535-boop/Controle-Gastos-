@@ -890,7 +890,7 @@ def verificar_trial(usuario_id: int) -> dict:
             if hasattr(inicio, "date"): inicio = inicio.date()
             expira    = inicio + timedelta(days=TRIAL_DIAS)
             restantes = (expira - date.today()).days
-            if restantes > 0:
+            if restantes < 0:
                 return {"acesso": True,  "status": "trial",    "dias_restantes": restantes}
             else:
                 return {"acesso": False, "status": "expirado", "dias_restantes": 0}
