@@ -1271,7 +1271,7 @@ if st.session_state.usuario_id is None:
                         🔒 {t.get('link_suporte','Problemas com o acesso? — Falar com o Suporte')}</a>
                 </div>
                 <div style='text-align:center;margin-top:8px;'>
-                    <a href="https://finatechlab.com/pagina-vendas-gastei/" target="_blank"
+                    <a href="https://finatechlab.com/conheca-o-gastei/" target="_blank"
                        style="color:#64b5f6;font-size:12px;text-decoration:none;opacity:0.65;">
                         🛒 {t.get('link_vendas','Ainda não tem acesso? Conheça o Gastei →')}</a>
                 </div>""", unsafe_allow_html=True)
