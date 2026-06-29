@@ -24,7 +24,7 @@ from email.mime.multipart import MIMEMultipart
 #  CONSTANTES GLOBAIS
 # ─────────────────────────────────────────────
 TRIAL_DIAS       = 7
-KIWIFY_URL       = "https://pay.kiwify.com.br/CtPYesz"
+KIWIFY_URL_MES       = "https://pay.kiwify.com.br/CtPYesz"
 WA_SUPORTE       = "5567991158892"
 GOOGLE_AUTH_URL  = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
@@ -1014,7 +1014,7 @@ def _job_emails_trial():
               <div style="text-align:center;font-size:48px;">⏰</div>
               <h2 style="text-align:center;color:#fbbf24;">Seu teste termina amanhã!</h2>
               <p style="color:#9ca3af;text-align:center;">Olá, <strong style="color:#fff;">{u['nome']}</strong>! Não perca o controle das suas finanças.</p>
-              <a href="{KIWIFY_URL}" style="display:block;background:linear-gradient(135deg,#6a3de8,#9b8dff);color:#fff;text-align:center;padding:16px;border-radius:12px;font-weight:700;font-size:15px;text-decoration:none;margin-top:24px;">
+              <a href="{KIWIFY_URL_MES}" style="display:block;background:linear-gradient(135deg,#6a3de8,#9b8dff);color:#fff;text-align:center;padding:16px;border-radius:12px;font-weight:700;font-size:15px;text-decoration:none;margin-top:24px;">
                 🔓 Assinar Gastei Premium — R$ 24,90/mês</a></div>"""
             _smtp_send(cfg, u["email"], "⏰ Seu teste grátis termina amanhã — Gastei", html)
             run_query("UPDATE usuarios SET aviso_d1_enviado=TRUE WHERE id=%s", (u["id"],))
@@ -1028,7 +1028,7 @@ def _job_emails_trial():
               <div style="text-align:center;font-size:48px;">🔒</div>
               <h2 style="text-align:center;color:#ef4444;">Acesso suspenso</h2>
               <p style="color:#9ca3af;text-align:center;">Olá, <strong style="color:#fff;">{u['nome']}</strong>! Seus {TRIAL_DIAS} dias gratuitos chegaram ao fim.</p>
-              <a href="{KIWIFY_URL}" style="display:block;background:linear-gradient(135deg,#6a3de8,#9b8dff);color:#fff;text-align:center;padding:16px;border-radius:12px;font-weight:700;font-size:15px;text-decoration:none;margin-top:24px;">
+              <a href="{KIWIFY_URL_MES}" style="display:block;background:linear-gradient(135deg,#6a3de8,#9b8dff);color:#fff;text-align:center;padding:16px;border-radius:12px;font-weight:700;font-size:15px;text-decoration:none;margin-top:24px;">
                 🚀 Reativar acesso — R$ 24,90/mês</a></div>"""
             _smtp_send(cfg, u["email"], "🔒 Seu acesso ao Gastei foi suspenso", html)
             run_query("UPDATE usuarios SET aviso_d0_enviado=TRUE WHERE id=%s", (u["id"],))
@@ -1052,7 +1052,7 @@ def renderizar_tela_bloqueio(nome: str = ""):
         Olá{nome_d}! Seus <strong style="color:#fff;">{TRIAL_DIAS} dias grátis</strong>
         chegaram ao fim.<br>Seus dados estão salvos e esperando por você.
       </p>
-      <div class="blq-badge">💳 Apenas R$ 24,90/mês · Cancele quando quiser</div>
+      <div class="blq-badge">💳 Apenas R$ 29,90/mês · Cancele quando quiser</div>
       <ul class="blq-features">
         <li>Lançamentos e parcelas ilimitados</li>
         <li>Controle de contas fixas e variáveis</li>
@@ -1060,8 +1060,8 @@ def renderizar_tela_bloqueio(nome: str = ""):
         <li>Análise de % do salário comprometido</li>
         <li>Suporte prioritário via WhatsApp</li>
       </ul>
-      <a href="{KIWIFY_URL}" target="_blank" class="blq-btn">
-        🚀 Assinar Gastei Premium — R$ 24,90/mês
+      <a href="{KIWIFY_URL_MES}" target="_blank" class="blq-btn">
+        🚀 Assinar Gastei Premium — R$ 29,90/mês
       </a><br>
       <a href="{link_wa}" target="_blank" class="blq-wa">
         💬 Falar com o suporte no WhatsApp
@@ -1485,7 +1485,7 @@ if _trial["status"] == "trial" and _trial.get("dias_restantes", 999) <= 2:
       <span style="color:#fde047;font-size:13px;font-weight:700;">
         {t.get('trial_aviso','⏰ Seu teste grátis termina em **{} dia(s)**!').format(_dr)}
       </span>
-      <a href="{KIWIFY_URL}" target="_blank"
+      <a href="{KIWIFY_URL_MES}" target="_blank"
          style="background:linear-gradient(135deg,#6a3de8,#9b8dff);color:#fff;
                 text-decoration:none;padding:7px 18px;border-radius:8px;
                 font-size:12px;font-weight:700;white-space:nowrap;">
